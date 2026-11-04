@@ -3,6 +3,7 @@ import { getYaw, syncYawToPlayer } from './camera.js'
 import { isFirstPerson } from './modes.js'
 import { RAPIER, alpha, onTick, world } from './physics.js'
 import { PHYSICS, PLAYER_DIMS, SPAWN, SPAWN_FACING } from './config.js'
+import { runSpeed } from './rules.js'
 
 // The local player singleton, mutated in place. A kinematic Rapier capsule
 // driven by Rapier's KinematicCharacterController: it slides along walls,
@@ -16,8 +17,11 @@ export const player = {
   velocity: { x: 0, y: 0, z: 0 },
   grounded: true,
   facing: SPAWN_FACING, // yaw the character model faces, radians
+  speedStat: 1, // the HUD speed stat (shoe): sets walk / sprint speed (rules.runSpeed)
+  stunned: 0, // s left lying on the ground (caught by a neighbour): no moving or jumping
+  conveyor: { x: 0, z: 0 }, // m/s the ground under you carries you (the base treadmill belt)
+  autoWalk: null, // { x, z, speed } you walk along (unit direction, m/s) while no move key is held (treadmill)
   dims: { ...PLAYER_DIMS },
-  racing: false, // race.js drives position/renderPosition itself; the controller stands still
 }
 
 const HALF = PLAYER_DIMS.height / 2 // capsule centre above the feet
@@ -52,6 +56,7 @@ export function resetPlayer(spawn = SPAWN, facing = SPAWN_FACING) {
   player.position.z = prev.z = player.renderPosition.z = spawn.z
   player.velocity.x = player.velocity.y = player.velocity.z = 0
   player.grounded = true
+  player.stunned = 0
   player.facing = facing
   body?.setTranslation({ x: spawn.x, y: spawn.y + HALF, z: spawn.z }, true)
   body?.setNextKinematicTranslation({ x: spawn.x, y: spawn.y + HALF, z: spawn.z })
@@ -89,7 +94,6 @@ function step(dt) {
   prev.x = player.position.x
   prev.y = player.position.y
   prev.z = player.position.z
-  if (player.racing) return
 
   // Camera-relative ground basis.
   const yaw = getYaw()
@@ -97,19 +101,27 @@ function step(dt) {
   const fwdZ = -Math.cos(yaw)
   const rightX = Math.cos(yaw)
   const rightZ = -Math.sin(yaw)
-  const mv = inputState.move
+  const stunned = player.stunned > 0
+  if (stunned) player.stunned = Math.max(0, player.stunned - dt)
+  const mv = stunned ? { x: 0, z: 0 } : inputState.move
   const len = Math.hypot(mv.x, mv.z)
   const scale = len > 1 ? 1 / len : 1
-  const wishX = (fwdX * mv.z + rightX * mv.x) * scale
-  const wishZ = (fwdZ * mv.z + rightZ * mv.x) * scale
-  const speed = inputState.sprint ? PHYSICS.sprintSpeed : PHYSICS.walkSpeed
+  let wishX = (fwdX * mv.z + rightX * mv.x) * scale
+  let wishZ = (fwdZ * mv.z + rightZ * mv.x) * scale
+  // No input on the treadmill: you walk by yourself toward its arch.
+  const auto = len <= 0.01 && !stunned && player.autoWalk
+  if (auto) {
+    wishX = player.autoWalk.x
+    wishZ = player.autoWalk.z
+  }
+  const speed = auto ? player.autoWalk.speed : runSpeed(player.speedStat, inputState.sprint)
 
-  const rate = !player.grounded ? PHYSICS.airAccel : len > 0.01 ? PHYSICS.accel : PHYSICS.decel
+  const rate = !player.grounded ? PHYSICS.airAccel : len > 0.01 || auto ? PHYSICS.accel : PHYSICS.decel
   approach2D(player.velocity, wishX * speed, wishZ * speed, rate * dt)
 
   // Jump: buffered a little before landing, and allowed a little after leaving a ledge.
   if (inputState.jump) {
-    jumpQueued = PHYSICS.jumpBuffer
+    if (!stunned) jumpQueued = PHYSICS.jumpBuffer
     inputState.jump = false
   }
   sinceGrounded = player.grounded ? 0 : sinceGrounded + dt
@@ -125,7 +137,7 @@ function step(dt) {
   player.velocity.y += PHYSICS.gravity * dt
   if (player.grounded && !jumped && player.velocity.y < -2) player.velocity.y = -2 // stay pressed to slopes
 
-  const desired = { x: player.velocity.x * dt, y: player.velocity.y * dt, z: player.velocity.z * dt }
+  const desired = { x: (player.velocity.x + player.conveyor.x) * dt, y: player.velocity.y * dt, z: (player.velocity.z + player.conveyor.z) * dt }
   controller.computeColliderMovement(collider, desired, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS)
   const moved = controller.computedMovement()
   player.grounded = !jumped && controller.computedGrounded()

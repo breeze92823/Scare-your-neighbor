@@ -3,11 +3,8 @@
 // white bordered frame, outlined title + icon on the top-left edge, tilted red X.
 // The caller fills `body`. Only one window is open at a time; Esc closes it
 // (main.js routes Esc through closeTopWindow before the portal menu).
-// Opening whooshes in (sound + backdrop fade + cards cascading in), closing
-// shrinks out; replay()'s shake / bump also play the deny / equip sounds.
+// Opening pops in over a fading backdrop, closing shrinks out.
 import './uiWindow.css'
-import { feedback, sfx } from './audio/index.js'
-import { burst, cardsIn, centre } from './juice.js'
 
 const CLOSE_ICON = `<svg viewBox="0 0 100 100" aria-hidden="true">
   <path d="M30 30 L70 70 M70 30 L30 70" stroke="#3b0606" stroke-width="20" transform="translate(-3 5)"/>
@@ -21,9 +18,6 @@ export function replay(el, cls) {
   el.classList.remove(cls)
   void el.offsetWidth
   el.classList.add(cls)
-  feedback(cls, el)
-  // Something just got equipped / claimed: sparks fly off it.
-  if (cls === 'bump' && el.isConnected && !el.matches('.rb-val, .pt-plus')) burst(...centre(el), 'sparks')
 }
 
 // Closes the open window. Returns true if there was one (so Esc can stop there).
@@ -117,9 +111,6 @@ export function createWindow({ title, icon = '', className = '', onOpen, onClose
     open() {
       if (shown) return
       if (current && current !== win) current.close()
-      // Sound first: the render + layout below can take a while on a phone, and the
-      // whoosh should land with the press, not after it.
-      sfx.windowOpen()
       current = win
       shown = true
       document.body.classList.add('uiw-open') // hud.css folds the HUD away on touch
@@ -129,14 +120,12 @@ export function createWindow({ title, icon = '', className = '', onOpen, onClose
       overlay.hidden = false
       fitClear(win)
       replay(dialog, 'pop')
-      cardsIn(body)
       document.exitPointerLock?.() // the cursor has to be free to press the buttons
     },
     close() {
       if (!shown) return
-      sfx.windowClose()
       shown = false
-      overlay.classList.add('closing') // juice.css: shrink + fade, then hidden
+      overlay.classList.add('closing') // uiWindow.css: shrink + fade, then hidden
       closing = setTimeout(() => {
         overlay.hidden = true
         overlay.classList.remove('closing')

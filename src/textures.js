@@ -732,3 +732,63 @@ export function paintChecker(a = '#ff5fa8', b = '#ff7fbc', size = 64) {
   ctx.fillRect(size / 2, size / 2, size / 2, size / 2)
   return c
 }
+
+// Lego studs: a grey-scale tile of `per` x `per` square studs, each with a dark
+// top/left edge and a light bottom/right edge. Meant to be tinted by the
+// material colour (white texel = the colour itself).
+export function paintStuds(size = 256, per = 4) {
+  const c = document.createElement('canvas')
+  c.width = c.height = size
+  const ctx = c.getContext('2d')
+  const s = size / per
+  const g = (v) => `rgb(${v},${v},${v})`
+  ctx.fillStyle = g(232)
+  ctx.fillRect(0, 0, size, size)
+  const lw = Math.max(2, Math.round(s * 0.07))
+  for (let y = 0; y < per; y++) {
+    for (let x = 0; x < per; x++) {
+      const x0 = x * s
+      const y0 = y * s
+      ctx.fillStyle = g(214) // seam between studs
+      ctx.fillRect(x0, y0, s, 1)
+      ctx.fillRect(x0, y0, 1, s)
+      const a = x0 + s * 0.2
+      const b = y0 + s * 0.2
+      const w = s * 0.6
+      ctx.fillStyle = g(246) // stud top
+      ctx.fillRect(a, b, w, w)
+      ctx.fillStyle = g(168) // shadowed top + left edges
+      ctx.fillRect(a, b, w, lw)
+      ctx.fillRect(a, b, lw, w)
+      ctx.fillStyle = g(255) // lit bottom + right edges
+      ctx.fillRect(a, b + w - lw, w, lw)
+      ctx.fillRect(a + w - lw, b, lw, w)
+    }
+  }
+  return c
+}
+
+// Vertical awning stripes: `n` pairs of colour / white across the width.
+export function paintStripes(color, white = '#ffffff', n = 5, w = 256, h = 64) {
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+  const ctx = c.getContext('2d')
+  const sw = w / (n * 2)
+  for (let i = 0; i < n * 2; i++) {
+    ctx.fillStyle = i % 2 ? white : color
+    ctx.fillRect(i * sw, 0, sw + 1, h)
+  }
+  return c
+}
+
+// Rounded rectangle path helper for the sign painters.
+export function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
+}

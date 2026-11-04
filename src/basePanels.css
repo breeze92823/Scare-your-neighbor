@@ -1,0 +1,240 @@
+/* Packages / Briefcase side panels (basePanels.js), inside .hud so they share its --u
+   (reference px, 1920x992), --tap, safe-area vars and the .ol outlined text.
+   Measured off the reference: frame 440x335 at the right edge from 33% down, header
+   68, rows 90, the red ">" tab 70x70 left of the frame, "Equip Best" 223x60 under it. */
+.bp {
+  --bp-w: calc(440 * var(--u));
+  --bp-h: calc(335 * var(--u));
+  --bp-line: max(2px, calc(4 * var(--u)));
+  position: absolute;
+  right: calc(var(--sr) + 20 * var(--u));
+  top: 33%;
+  display: grid;
+  grid-template-columns: auto var(--bp-w);
+  grid-template-areas: 'back frame' '. foot';
+  column-gap: calc(18 * var(--u));
+  row-gap: calc(12 * var(--u));
+  align-items: center;
+}
+.bp[hidden] {
+  display: none;
+}
+.bp:not([hidden]) {
+  animation: bp-in 0.16s ease-out;
+}
+@keyframes bp-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(40 * var(--u)));
+  }
+}
+/* The squares make way for the open panel. */
+.hud.bp-open .hud-right {
+  visibility: hidden;
+}
+
+/* --- Buttons -------------------------------------------------------------------------- */
+.bp .hud-btn {
+  --face: #3fdc4a;
+  --face-hi: #8ef58a;
+  --face-lo: #1e9f2a;
+  --rim: #0b3a10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--bp-line) solid var(--rim);
+  background: linear-gradient(180deg, var(--face-hi), var(--face) 45%, var(--face-lo));
+  box-shadow:
+    inset 0 0 0 max(1px, calc(3 * var(--u))) rgba(255, 255, 255, 0.45),
+    0 calc(4 * var(--u)) 0 rgba(0, 0, 0, 0.25);
+}
+.bp .hud-btn.red {
+  --face: #f0343c;
+  --face-hi: #ff7a76;
+  --face-lo: #c8141e;
+  --rim: #3a0608;
+}
+.bp .hud-btn.gold {
+  --face: #f2b81e;
+  --face-hi: #ffe27a;
+  --face-lo: #d08a0a;
+  --rim: #3b2600;
+}
+.bp .hud-btn.off {
+  filter: saturate(0.25) brightness(0.85);
+}
+.bp-btn-text {
+  font-size: inherit;
+  letter-spacing: -0.01em;
+}
+.bp .gold .bp-btn-text {
+  color: #fff3c4;
+  --oc: #5a3a00;
+}
+
+.bp-back {
+  grid-area: back;
+  width: max(var(--tap), calc(70 * var(--u)));
+  height: max(var(--tap), calc(70 * var(--u)));
+  padding: 14%;
+}
+.bp .bp-back {
+  --face: #f0343c;
+  --face-hi: #ff7a76;
+  --face-lo: #c8141e;
+  --rim: #2a0406;
+}
+
+/* --- Frame ------------------------------------------------------------------------------ */
+.bp-frame {
+  grid-area: frame;
+  height: var(--bp-h);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: calc(var(--bp-line) * 1.25) solid #15151f;
+  background: #2b2a36;
+  box-shadow: 0 calc(6 * var(--u)) 0 rgba(0, 0, 0, 0.25);
+  pointer-events: auto;
+}
+.bp-head {
+  flex: none;
+  height: max(calc(var(--tap) + 10px), calc(68 * var(--u)));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(10 * var(--u));
+  padding: 0 calc(10 * var(--u)) 0 calc(14 * var(--u));
+  background: linear-gradient(90deg, #fffaf0, #fbe6c4 45%, #eab878);
+  border-bottom: var(--bp-line) solid #15151f;
+}
+.bp-title {
+  min-width: 0;
+  font-size: calc(38 * var(--u));
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.bp-hbtn {
+  flex: none;
+  height: max(var(--tap), calc(52 * var(--u)));
+  padding: 0 calc(10 * var(--u));
+  font-size: calc(24 * var(--u));
+}
+.bp-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  display: flex;
+  flex-direction: column;
+  gap: calc(10 * var(--u));
+  padding: calc(14 * var(--u)) calc(12 * var(--u));
+  scrollbar-width: thin;
+  scrollbar-color: #6a6878 transparent;
+}
+.bp-empty {
+  margin: auto;
+  font-size: calc(30 * var(--u));
+  color: #fff;
+  text-align: center;
+  white-space: normal;
+}
+
+/* --- Rows ---------------------------------------------------------------------------------- */
+.bp-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(12 * var(--u));
+  min-height: max(calc(var(--tap) + 12px), calc(90 * var(--u)));
+  padding: calc(6 * var(--u)) calc(8 * var(--u)) calc(6 * var(--u)) calc(10 * var(--u));
+  border: max(1.5px, calc(3 * var(--u))) solid #1b1a24;
+  background: linear-gradient(180deg, #4a4958, #3b3a48);
+}
+.bp-row.on {
+  background: linear-gradient(180deg, #505060, #42414f);
+  box-shadow: inset 0 0 0 max(1px, calc(2 * var(--u))) rgba(255, 255, 255, 0.12);
+}
+.bp-icon {
+  flex: none;
+  position: relative;
+  width: calc(74 * var(--u));
+  height: calc(74 * var(--u));
+  border-radius: 50%;
+  border: max(1.5px, calc(3 * var(--u))) solid #1b1a24;
+  background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--t0) 55%, #fff), var(--t0) 50%, var(--t1));
+  overflow: hidden;
+}
+.bp-icon img {
+  position: absolute;
+  inset: 4%;
+  width: 92%;
+  height: 92%;
+  object-fit: contain;
+}
+.bp-icon svg {
+  position: absolute;
+  inset: 14%;
+  width: 72%;
+  height: 72%;
+}
+.bp-words {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(6 * var(--u));
+}
+.bp-name {
+  font-size: calc(30 * var(--u));
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bp-sub {
+  font-size: calc(26 * var(--u));
+  color: #e6e6ee;
+}
+.bp-act {
+  flex: none;
+  margin-left: auto;
+  min-width: calc(128 * var(--u));
+  height: max(var(--tap), calc(64 * var(--u)));
+  padding: 0 calc(10 * var(--u));
+  font-size: calc(32 * var(--u));
+}
+
+.bp-foot {
+  grid-area: foot;
+  justify-self: center;
+  min-width: calc(223 * var(--u));
+  height: max(var(--tap), calc(60 * var(--u)));
+  padding: 0 calc(18 * var(--u));
+  font-size: calc(38 * var(--u));
+}
+
+/* --- Phones ---------------------------------------------------------------------------------- */
+/* Portrait: the panel spans the width (the Index / Shop column hides while it is open). */
+@media (orientation: portrait) and (max-width: 700px) {
+  .bp {
+    --bp-w: 1fr;
+    --bp-h: min(calc(400 * var(--u)), 42dvh);
+    left: calc(var(--sl) + 10px);
+    right: calc(var(--sr) + 10px);
+    top: 30%;
+    column-gap: 8px;
+    row-gap: 10px;
+  }
+  .hud.bp-open .hud-left {
+    visibility: hidden;
+  }
+}
+/* Short landscape with touch controls: left of the jump cluster, as tall as fits. */
+@media (max-height: 500px) {
+  .touch-ui .bp {
+    right: calc(var(--sr) + clamp(12px, 3vmin, 24px) + clamp(72px, 20vmin, 100px) + clamp(52px, 14vmin, 70px) + 24px);
+    top: calc(var(--st) + 10px);
+    --bp-h: calc(100dvh - var(--st) - var(--sb) - 20px - max(var(--tap), calc(60 * var(--u))) - 10px);
+    row-gap: 8px;
+  }
+}

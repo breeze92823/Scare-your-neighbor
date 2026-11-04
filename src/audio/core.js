@@ -9,8 +9,8 @@
 //                       └─ engine ─────────┘
 // `world` dips while a menu window is open so the UI sits on top of the scene.
 // The reverb is a generated impulse response: a few early reflections (the
-// cliffs and stalls) and a short, darkening tail, so one-shots sit in the beach
-// instead of sounding pasted on top of it.
+// cliffs and stalls) and a short, darkening tail, so one-shots sit in the lobby
+// instead of sounding pasted on top of it (the lane between its brick walls).
 import { AUDIO, COARSE_POINTER } from '../config.js'
 
 export const A = {
@@ -98,7 +98,7 @@ function makeNoise(ctx, seconds, kind, channels = 1) {
 }
 
 // Stereo impulse response: pre-delay, sparse early reflections, then a noise
-// tail whose high end dies first (air + sand absorb the highs).
+// tail whose high end dies first (air and grass absorb the highs).
 function makeImpulse(ctx) {
   const R = AUDIO.reverb
   const sr = ctx.sampleRate
@@ -177,7 +177,7 @@ function buildGraph() {
   A.sfx = bus(AUDIO.buses.sfx)
   A.world = bus(ducked ? AUDIO.duck : 1)
   A.amb = bus(AUDIO.buses.amb, A.world)
-  A.engine = bus(AUDIO.buses.engine, A.world)
+  A.engine = bus(AUDIO.buses.engine ?? 0, A.world) // unused here (kept for the shared graph)
   const conv = ctx.createConvolver()
   conv.buffer = makeImpulse(ctx)
   A.verb = ctx.createGain()

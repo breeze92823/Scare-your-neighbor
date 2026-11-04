@@ -1,0 +1,252 @@
+/* Scare-loop screen pieces (gameUi.js). Lengths are 1920x992 reference px times --u. */
+.gui {
+  --u: 1px;
+  --sb: env(safe-area-inset-bottom, 0px);
+  position: fixed;
+  inset: 0;
+  z-index: 19; /* above touch zones (10), just under the HUD (20) */
+  pointer-events: none;
+  overflow: hidden;
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-weight: 700;
+  line-height: 1.05;
+  color: #fff;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.gui * {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+}
+.gui .ol {
+  -webkit-text-stroke: max(3px, calc(6 * var(--u))) var(--oc, #1d1a22);
+  paint-order: stroke fill;
+}
+.gui-world {
+  position: absolute;
+  inset: 0;
+}
+
+/* --- Anchors: centred on their point, bottom edge on it ----------------------------- */
+.gui-anchor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  will-change: transform;
+}
+.gui-anchor::before {
+  content: none;
+}
+.gui-anchor.bubble,
+.gui-anchor.tag,
+.gui-anchor.emoji,
+.gui-anchor.pkg {
+  translate: -50% -100%;
+}
+/* Roblox-style chat bubble: white box, dark bold text. */
+.gui-anchor.bubble {
+  padding: calc(18 * var(--u)) calc(22 * var(--u));
+  background: #fff;
+  color: #1d1d24;
+  font-size: max(14px, calc(38 * var(--u)));
+  font-weight: 600;
+  box-shadow: 0 calc(3 * var(--u)) 0 rgba(0, 0, 0, 0.15);
+  animation: gui-in 0.18s ease-out;
+}
+.gui-anchor.bubble.red {
+  color: #e3242b;
+  font-weight: 700;
+}
+.gui-anchor.tag,
+.gui-anchor.pkg {
+  font-size: 30px; /* JS sets it from distance */
+  color: var(--tc, #fff);
+  -webkit-text-stroke: 0.16em #1d1a22;
+  paint-order: stroke fill;
+}
+.gui-anchor.pkg {
+  font-weight: 600;
+}
+.gui-anchor.emoji {
+  font-size: 60px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.3));
+  animation: gui-pop 0.3s cubic-bezier(0.3, 1.8, 0.5, 1);
+}
+@keyframes gui-in {
+  from {
+    opacity: 0;
+    scale: 0.85;
+  }
+}
+@keyframes gui-pop {
+  from {
+    scale: 0.2;
+  }
+}
+
+/* --- Prompt (dark card: E key circle, object + action) --------------------------------- */
+.gui-prompt {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  display: flex;
+  align-items: center;
+  gap: calc(14 * var(--u));
+  min-height: max(44px, calc(88 * var(--u)));
+  padding: calc(12 * var(--u)) calc(26 * var(--u)) calc(12 * var(--u)) calc(14 * var(--u));
+  border-radius: calc(10 * var(--u));
+  background: rgba(24, 26, 32, 0.72);
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: system-ui, 'Segoe UI', sans-serif;
+  will-change: transform;
+}
+.gui-prompt[hidden],
+.gui-anchor[hidden] {
+  display: none;
+}
+.gui-key {
+  flex: none;
+  width: max(30px, calc(60 * var(--u)));
+  height: max(30px, calc(60 * var(--u)));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 max(2px, calc(3 * var(--u))) rgba(255, 255, 255, 0.85);
+  font-size: max(12px, calc(22 * var(--u)));
+  font-weight: 500;
+}
+.gui-key.tap::after {
+  content: '';
+  width: 42%;
+  height: 42%;
+  border-radius: 50%;
+  background: #fff;
+}
+.gui-obj {
+  font-size: max(11px, calc(19 * var(--u)));
+  font-weight: 400;
+  color: #c9cbd2;
+}
+.gui-act {
+  font-size: max(14px, calc(25 * var(--u)));
+  font-weight: 500;
+  color: #fff;
+  margin-top: calc(4 * var(--u));
+}
+
+/* --- Bottom centre: SCARE! button over the hotbar ----------------------------------------- */
+.gui-bottom {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--sb) + 6 * var(--u));
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(14 * var(--u));
+}
+.gui-scare {
+  pointer-events: auto;
+  cursor: pointer;
+  min-width: max(150px, calc(300 * var(--u)));
+  height: max(48px, calc(90 * var(--u)));
+  padding: 0 calc(30 * var(--u));
+  border: 0;
+  background: #c8202f;
+  color: #fff;
+  font: inherit;
+  font-size: max(20px, calc(40 * var(--u)));
+  letter-spacing: 0.01em;
+  white-space: pre;
+  -webkit-text-stroke: max(2px, calc(5 * var(--u))) #1d1a22;
+  paint-order: stroke fill;
+  box-shadow: inset 0 calc(-6 * var(--u)) 0 rgba(0, 0, 0, 0.2);
+  animation: gui-pulse 0.8s ease-in-out infinite;
+}
+.gui-scare:active {
+  background: #9e1722;
+}
+.gui-scare[hidden] {
+  display: none;
+}
+@keyframes gui-pulse {
+  50% {
+    scale: 1.05;
+  }
+}
+.gui-hotbar {
+  display: flex;
+  gap: calc(10 * var(--u));
+}
+.gui-slot {
+  position: relative;
+  pointer-events: auto;
+  cursor: pointer;
+  width: max(44px, calc(78 * var(--u)));
+  height: max(44px, calc(78 * var(--u)));
+  padding: calc(8 * var(--u));
+  border: max(2px, calc(3 * var(--u))) solid transparent;
+  border-radius: calc(6 * var(--u));
+  background: rgba(40, 44, 54, 0.62);
+  color: #fff;
+}
+.gui-slot.on {
+  border-color: #3d7dff;
+}
+.gui-slot svg,
+.gui-slot img {
+  display: block;
+  object-fit: contain;
+  width: 100%;
+  height: 100%;
+}
+.gui-slot-n {
+  position: absolute;
+  left: calc(6 * var(--u));
+  top: calc(3 * var(--u));
+  font: 500 max(10px, calc(15 * var(--u))) system-ui, sans-serif;
+}
+.gui-slot-name {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  translate: -50% calc(-4 * var(--u));
+  font-size: max(12px, calc(20 * var(--u)));
+  font-weight: 600;
+  -webkit-text-stroke-width: max(2px, calc(4 * var(--u)));
+  white-space: nowrap;
+}
+
+/* --- Toast: outlined line under the rarity banner ------------------------------------------ */
+.gui-toast {
+  position: absolute;
+  left: 50%;
+  top: calc(env(safe-area-inset-top, 0px) + 17%);
+  translate: -50% 0;
+  max-width: 94vw;
+  text-align: center;
+  white-space: normal;
+  font-size: max(16px, calc(32 * var(--u)));
+  color: var(--c, #ff3b45);
+  --oc: #3a0306;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.gui-toast.show {
+  opacity: 1;
+  animation: gui-in 0.2s ease-out;
+}
+
+/* Touch, portrait: lift the bottom pieces above the joystick / jump buttons. */
+@media (max-aspect-ratio: 1/1) {
+  .touch-ui .gui-bottom {
+    bottom: calc(var(--sb) + clamp(140px, 36vmin, 190px));
+  }
+}

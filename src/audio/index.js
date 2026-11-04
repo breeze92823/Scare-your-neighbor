@@ -1,104 +1,107 @@
 // Game audio, the one import the rest of the game uses:
-//   import { sfx, installAudio, updateAudio } from './audio/index.js'
-// installAudio() once at boot (waits for the first gesture to start), then
-// updateAudio(dt, state) every frame for the engine, hull and ambience, and
-// sfx.<name>() for one-shots. Every button press anywhere gets its click here
-// (one capture-phase listener), so menus need no wiring of their own; the
-// result sounds (buy, deny, equip) come from uiWindow.replay and hud.setStat.
-import { BEACH } from '../config.js'
+//   import { sfx, at, installAudio, updateAudio } from './audio/index.js'
+// installAudio() once at boot (the context starts on the first gesture), then
+// updateAudio(dt, st) every frame: the player's footsteps / jumps / landings, the
+// listener for at(), and the outdoor wind bed. sfx.<name>(at(x, z)) for one-shots
+// in the world, sfx.<name>() for the player's own. Every HUD / window button press
+// gets its click here (one capture-phase listener).
+import { AUDIO } from '../config.js'
 import { A, installAudio as installCore, onStart, setDucked, setMuted, setVolume, isMuted, toggleMuted } from './core.js'
 import * as sfx from './sfx.js'
-import * as engine from './engine.js'
-import * as ambience from './ambience.js'
 
-export { sfx, setVolume, setMuted, isMuted, toggleMuted }
-export const engineBlip = engine.blip
-export const engineRev = engine.rev
+export { sfx, setVolume, setMuted, isMuted, toggleMuted, setDucked }
 
-let racing = false
-// Presses on anything clickable: chunky menu buttons, grid cards, HUD buttons, touch buttons.
+// --- Listener (the camera) ----------------------------------------------------------------
+const ear = { x: 0, z: 0, rx: 1, rz: 0 }
+// Pan and level for a sound at world (x, z): panned by the camera's right vector,
+// fading to nothing at AUDIO.hearing metres.
+export function at(x, z) {
+  const dx = x - ear.x
+  const dz = z - ear.z
+  const d = Math.hypot(dx, dz)
+  const pan = d > 0.5 ? Math.max(-0.85, Math.min(0.85, (dx * ear.rx + dz * ear.rz) / d)) : 0
+  const k = Math.max(0, 1 - d / AUDIO.hearing)
+  return { pan, gain: k * k * 0.9 + (d < 4 ? 0.1 : 0) }
+}
+
+// --- Button presses ---------------------------------------------------------------------------
 function onPress(e) {
   if (e.button > 0) return
-  const b = e.target.closest?.('button, [role="button"]')
-  if (!b || b.disabled) return
-  const pan = Math.max(-0.6, Math.min(0.6, (e.clientX / window.innerWidth - 0.5) * 1.2)) // a press on the left sounds left
-  if (b.classList.contains('touch-btn')) {
-    if (!racing) sfx.click(pan) // mid-race JUMP is a boost tap, which has its own sound
-  } else if (b.classList.contains('uiw-btn') || b.classList.contains('race-leave')) sfx.press(pan)
-  else if (b.getAttribute('role') === 'option' || b.closest('[role="listbox"], .pt-grid, .gf-grid, .bt-grid')) sfx.tick(pan)
-  else if (b.classList.contains('hud-auto')) sfx.toggle(!b.classList.contains('on'))
-  else if (b.classList.contains('hud-slot')) sfx.holster()
-  else sfx.click(pan)
+  const b = e.target.closest?.('.hud-btn, .gui-slot, .uiw-close, .uiw-btn, .touch-btn')
+  if (!b) return
+  sfx.click(Math.max(-0.6, Math.min(0.6, (e.clientX / window.innerWidth - 0.5) * 1.2)))
+}
+
+// --- Wind: brown noise, lowpassed and slowly swelling (no hiss) ----------------------------------
+function startWind(ctx) {
+  const src = ctx.createBufferSource()
+  src.buffer = A.noise.brownStereo
+  src.loop = true
+  const lp = ctx.createBiquadFilter()
+  lp.type = 'lowpass'
+  lp.frequency.value = 320
+  lp.Q.value = 0.4
+  const g = ctx.createGain()
+  g.gain.value = AUDIO.wind
+  // Two slow, unrelated LFOs: gusts that never quite repeat.
+  for (const [rate, depth] of [[0.07, 0.45], [0.19, 0.25]]) {
+    const lfo = ctx.createOscillator()
+    lfo.frequency.value = rate
+    const lg = ctx.createGain()
+    lg.gain.value = AUDIO.wind * depth
+    lfo.connect(lg).connect(g.gain)
+    lfo.start()
+  }
+  const sweep = ctx.createOscillator()
+  sweep.frequency.value = 0.05
+  const sg = ctx.createGain()
+  sg.gain.value = 120
+  sweep.connect(sg).connect(lp.frequency)
+  sweep.start()
+  src.connect(lp).connect(g).connect(A.amb)
+  src.start()
 }
 
 export function installAudio() {
   installCore()
-  // After the core's unlock listener (same phase, registered later), so the context exists.
+  onStart(startWind)
+  onStart(() => sfx.loadCat()) // decode the cat laugh up front so the first failed scare uses it
   window.addEventListener('pointerdown', onPress, { capture: true, passive: true })
 }
 
-// Feedback hooks for the shared UI pieces (see uiWindow.replay, hud.setStat):
-// they wait one task so a specific sound fired in the same handler wins.
-export function feedback(kind, el) {
-  setTimeout(() => {
-    if (kind === 'shake') return sfx.deny()
-    if (sfx.claimedRecently()) return
-    if (kind === 'spend') return sfx.purchase()
-    if (kind === 'bump') {
-      if (el?.classList.contains('pt-pet')) return el.closest('[data-mode]')?.dataset.mode === 'lock' ? sfx.lock() : sfx.pop(el.classList.contains('equipped'))
-      if (el?.classList.contains('pt-plus') || el?.classList.contains('rb-val')) return
-      return sfx.equip()
-    }
-    if (kind === 'tr-in') return sfx.sceneIn()
-  }, 0)
-}
-
-// Per-frame state from main.js:
-// { camera, player: { x, y, z, vy, grounded }, speed (m/s), top (m/s), boost, moving (0..1),
-//   racing, staging, windowOpen, night }
-const prev = { x: 0, y: 0, z: 0, grounded: true, vy: 0, onWater: false, init: false }
+// --- Per frame ---------------------------------------------------------------------------------
+// st: { camera, player: { x, y, z, vy, grounded, speed, sprint, stunned } }
+const prev = { x: 0, z: 0, grounded: true, vy: 0, init: false }
+let walked = 0
 let started = false
 onStart(() => (started = true))
 export function updateAudio(dt, st) {
-  racing = st.racing
-  if (!started || !A.ctx || A.ctx.state !== 'running') return
+  const e = st.camera.matrixWorld.elements // camera right vector = first column
+  const rl = Math.hypot(e[0], e[2]) || 1
+  ear.x = st.camera.position.x
+  ear.z = st.camera.position.z
+  ear.rx = e[0] / rl
+  ear.rz = e[2] / rl
+  if (!started || A.ctx?.state !== 'running') return
+
   const p = st.player
-  const onWater = st.racing ? p.z < BEACH.front : false
   if (prev.init) {
-    // The boat leaves the pad and slams into the sea.
-    if (onWater && !prev.onWater) sfx.splash(1.3)
-    if (!st.racing && !st.staging) {
-      if (prev.grounded && !p.grounded && p.vy > 2) sfx.jump()
-      if (!prev.grounded && p.grounded && prev.vy < -3) sfx.land(Math.min(1, -prev.vy / 18))
-      if (Math.hypot(p.x - prev.x, p.z - prev.z) > 12) sfx.respawnFx() // teleported (respawn)
-    }
+    const moved = Math.hypot(p.x - prev.x, p.z - prev.z)
+    if (moved > 8) walked = 0 // teleported / respawned
+    else if (p.grounded && p.speed > 0.8 && !p.stunned) {
+      walked += moved
+      const stride = p.sprint ? AUDIO.stride.sprint : AUDIO.stride.walk
+      if (walked >= stride) {
+        walked -= stride
+        sfx.footstep(p.sprint ? 0.5 : 0)
+      }
+    } else walked = Math.min(walked, 0.6) // the next step comes soon after starting
+    if (prev.grounded && !p.grounded && p.vy > 2) sfx.jump()
+    if (!prev.grounded && p.grounded && prev.vy < -4) sfx.land(Math.min(1, -prev.vy / 18))
   }
   prev.x = p.x
-  prev.y = p.y
   prev.z = p.z
   prev.grounded = p.grounded
   prev.vy = p.vy
-  prev.onWater = onWater
   prev.init = true
-
-  setDucked(st.windowOpen)
-  const e = st.camera.matrixWorld.elements // camera right vector = first column
-  const rl = Math.hypot(e[0], e[2]) || 1
-  engine.update(dt, {
-    speed: st.speed,
-    top: st.top,
-    boost: st.boost,
-    moving: st.moving,
-    racing: st.racing,
-    onWater: onWater || st.staging,
-    visible: st.visible,
-  })
-  ambience.update(dt, {
-    x: st.camera.position.x,
-    z: st.camera.position.z,
-    rightX: e[0] / rl,
-    rightZ: e[2] / rl,
-    racing: st.racing,
-    night: st.night,
-  })
 }

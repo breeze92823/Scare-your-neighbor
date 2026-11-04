@@ -250,3 +250,26 @@
   40% { transform: scale(1.35); }
   100% { transform: scale(1); }
 }
+
+/* Backdrop fades in under the frame's pop; closing shrinks and fades out. */
+.uiw-overlay:not([hidden]) {
+  animation: uiw-fade 0.2s ease-out;
+}
+.uiw-overlay.closing {
+  pointer-events: none;
+  animation: uiw-fade 0.16s ease-in reverse forwards;
+}
+.uiw-overlay.closing .uiw-dialog {
+  animation: uiw-out 0.16s ease-in forwards;
+}
+@keyframes uiw-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes uiw-out {
+  to {
+    transform: scale(0.82);
+    opacity: 0;
+  }
+}

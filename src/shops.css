@@ -1,0 +1,453 @@
+/* Stall windows (shops.js): Aura Shop, Costume Shop, Sell Items. Measured off the
+   1920x991 reference screenshots; every length is design px times --uiw-u (uiWindow.css),
+   so the window is pixel-for-pixel the reference at 1920 wide and scales with the screen. */
+.uiw-overlay.shopw {
+  --uiw-w: 788;
+  --uiw-h: 488;
+  --sw-ink: #1a0f24;
+  --sw-head0: #f24af2;
+  --sw-head1: #c62fd6;
+  --sw-body: #2b1642;
+  padding: var(--uiw-top) 0 0;
+  -webkit-backdrop-filter: blur(9px);
+  backdrop-filter: blur(9px);
+}
+@media (pointer: coarse) {
+  .uiw-overlay.shopw {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+.shopw .ol {
+  -webkit-text-stroke: max(2px, calc(var(--ow, 3.5) * 2 * var(--uiw-u))) var(--oc, #1a1020);
+  paint-order: stroke fill;
+}
+
+/* --- Frame: dark border, header bar, dark body ------------------------------------- */
+.shopw .uiw-dialog {
+  width: calc(788 * var(--uiw-u));
+  min-height: 0;
+  height: calc(488 * var(--uiw-u));
+  display: flex;
+  flex-direction: column;
+  background: var(--sw-body);
+  border: max(2px, calc(4 * var(--uiw-u))) solid var(--sw-ink);
+  border-radius: calc(3 * var(--uiw-u));
+  box-shadow: 0 calc(8 * var(--uiw-u)) calc(30 * var(--uiw-u)) rgba(0, 0, 0, 0.35);
+  overflow: visible;
+}
+.shopw .uiw-dialog::before {
+  /* header bar */
+  content: '';
+  flex: none;
+  height: calc(74 * var(--uiw-u));
+  background: linear-gradient(var(--sw-head0), var(--sw-head1));
+  border-bottom: max(2px, calc(4 * var(--uiw-u))) solid var(--sw-ink);
+  box-shadow: inset 0 calc(4 * var(--uiw-u)) 0 rgba(255, 255, 255, 0.22);
+}
+.shopw .uiw-title {
+  left: calc(20 * var(--uiw-u));
+  top: 0;
+  height: calc(74 * var(--uiw-u));
+  gap: 0;
+}
+.shopw .uiw-title h2 {
+  font-size: calc(46 * var(--uiw-u));
+  letter-spacing: -0.01em;
+  color: #fff;
+  --ow: 3.5;
+  --oc: #1a0f24;
+  text-shadow: 0 calc(3 * var(--uiw-u)) 0 rgba(0, 0, 0, 0.35);
+}
+.shopw .uiw-close {
+  right: calc(12 * var(--uiw-u));
+  top: calc((74 * var(--uiw-u) - max(40px, 54 * var(--uiw-u))) / 2); /* centred in the header at any size */
+  width: max(40px, calc(54 * var(--uiw-u)));
+  height: max(40px, calc(54 * var(--uiw-u)));
+  transform: none;
+  border-radius: calc(3 * var(--uiw-u));
+  border: max(2px, calc(3 * var(--uiw-u))) solid #fff;
+  background: linear-gradient(#ff2a2a, #e0121a 60%, #c80c14);
+  box-shadow:
+    0 0 0 max(1px, calc(2 * var(--uiw-u))) var(--sw-ink),
+    inset 0 calc(-4 * var(--uiw-u)) 0 rgba(110, 0, 0, 0.35);
+}
+.shopw .uiw-close svg {
+  width: 74%;
+  height: 74%;
+}
+.shopw .uiw-close:active {
+  transform: scale(0.92);
+}
+.shopw .uiw-body {
+  flex: 1;
+  min-height: 0;
+  padding: calc(17 * var(--uiw-u)) calc(16 * var(--uiw-u)) calc(14 * var(--uiw-u)) calc(20 * var(--uiw-u));
+}
+
+/* --- Card row ----------------------------------------------------------------------- */
+.shop-row {
+  display: flex;
+  gap: calc(11 * var(--uiw-u));
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: calc(12 * var(--uiw-u));
+  touch-action: pan-x;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.shop-row::-webkit-scrollbar {
+  height: max(4px, calc(6 * var(--uiw-u)));
+}
+.shop-row::-webkit-scrollbar-track {
+  background: transparent;
+}
+.shop-row::-webkit-scrollbar-thumb {
+  background: #a99fd0;
+  border-radius: 99px;
+}
+.shop-card {
+  position: relative;
+  flex: none;
+  width: calc(252 * var(--uiw-u));
+  height: calc(356 * var(--uiw-u));
+  border: max(2px, calc(3 * var(--uiw-u))) solid rgba(10, 6, 20, 0.85);
+  border-radius: calc(4 * var(--uiw-u));
+  box-shadow: inset 0 0 0 max(1px, calc(2 * var(--uiw-u))) rgba(255, 255, 255, 0.3);
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #fff;
+}
+.shop-card.costume {
+  background: linear-gradient(var(--bg0), var(--bg1));
+}
+.shop-card.costume::before {
+  /* the lighter disc behind the figure */
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(84 * var(--uiw-u));
+  width: calc(200 * var(--uiw-u));
+  height: calc(200 * var(--uiw-u));
+  translate: -50% 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--halo) 0 60%, color-mix(in srgb, var(--halo) 60%, transparent) 100%);
+  opacity: 0.55;
+}
+.shop-card.r-common.aura {
+  border-color: #d5d7dc;
+}
+.shop-card.worn {
+  border-color: #6dff6d;
+  box-shadow:
+    inset 0 0 0 max(1px, calc(2 * var(--uiw-u))) rgba(255, 255, 255, 0.5),
+    0 0 calc(10 * var(--uiw-u)) rgba(110, 255, 110, 0.6);
+}
+.shop-art {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(44 * var(--uiw-u));
+  height: calc(222 * var(--uiw-u));
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.shop-img {
+  height: 100%;
+  aspect-ratio: 256 / 300;
+  object-fit: contain;
+  filter: drop-shadow(0 calc(4 * var(--uiw-u)) calc(3 * var(--uiw-u)) rgba(0, 0, 0, 0.35));
+}
+.shop-img:not([src]) {
+  visibility: hidden;
+}
+.shop-name {
+  position: relative;
+  margin-top: calc(12 * var(--uiw-u));
+  font-size: calc(30 * var(--uiw-u));
+  line-height: 1;
+  white-space: nowrap;
+  --ow: 3;
+}
+.shop-rarity {
+  position: relative;
+  margin-top: calc(1 * var(--uiw-u));
+  font-size: calc(18 * var(--uiw-u));
+  line-height: 1;
+  --ow: 2.2;
+}
+.shop-mult {
+  position: absolute;
+  left: calc(14 * var(--uiw-u));
+  right: calc(14 * var(--uiw-u));
+  top: calc(251 * var(--uiw-u));
+  height: calc(40 * var(--uiw-u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(14, 10, 24, 0.55);
+  border-radius: calc(2 * var(--uiw-u));
+  font-size: calc(28 * var(--uiw-u));
+  white-space: pre;
+  --ow: 3;
+}
+.shop-mult > span {
+  white-space: pre;
+}
+.shop-x {
+  color: #5dff4a;
+}
+.shop-buy {
+  position: absolute;
+  left: calc(10 * var(--uiw-u));
+  right: calc(10 * var(--uiw-u));
+  top: calc(298 * var(--uiw-u));
+  height: calc(44 * var(--uiw-u));
+  display: flex;
+  gap: calc(4 * var(--uiw-u));
+}
+.shop-btn {
+  min-height: 30px;
+  height: 100%;
+  padding: 0 calc(6 * var(--uiw-u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(6 * var(--uiw-u));
+  border: max(1.5px, calc(2.5 * var(--uiw-u))) solid #0c1a0c;
+  border-radius: calc(2 * var(--uiw-u));
+  font: inherit;
+  font-size: calc(25 * var(--uiw-u));
+  line-height: 1;
+  color: #fff;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.06s, filter 0.1s;
+  --ow: 2.6;
+}
+.shop-btn:active {
+  transform: translateY(calc(2 * var(--uiw-u))) scale(0.97);
+  filter: brightness(0.92);
+}
+.shop-cash,
+.shop-equip {
+  flex: 1;
+  background: linear-gradient(#3cea3c, #22c522 55%, #19a719);
+  box-shadow: inset 0 calc(-4 * var(--uiw-u)) 0 rgba(0, 70, 0, 0.35), inset 0 calc(3 * var(--uiw-u)) 0 rgba(255, 255, 255, 0.25);
+}
+.shop-gem {
+  flex: none;
+  width: calc(82 * var(--uiw-u));
+  border-color: #2a0a3a;
+  background: linear-gradient(#c84af6, #a128e0 55%, #8a1cc8);
+  box-shadow: inset 0 calc(-4 * var(--uiw-u)) 0 rgba(60, 0, 90, 0.35), inset 0 calc(3 * var(--uiw-u)) 0 rgba(255, 255, 255, 0.25);
+}
+.shop-gem-icon {
+  width: calc(26 * var(--uiw-u));
+  height: calc(26 * var(--uiw-u));
+  flex: none;
+}
+.shop-gem-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.shop-worn {
+  flex: 1;
+  background: linear-gradient(#3d6b3d, #2c522c);
+  color: #c9ffc9;
+}
+.bump-card {
+  animation: shop-bump 0.4s cubic-bezier(0.3, 1.7, 0.5, 1);
+}
+@keyframes shop-bump {
+  40% {
+    transform: scale(1.05);
+  }
+}
+
+/* --- Sell Items ----------------------------------------------------------------------- */
+.uiw-overlay.sell-items {
+  --sw-head0: #f24444;
+  --sw-head1: #d42424;
+  --sw-body: #2e0b10;
+  --sw-ink: #1c0507;
+}
+.sell-all {
+  position: absolute;
+  z-index: 2;
+  right: calc(24 * var(--uiw-u) + max(40px, 54 * var(--uiw-u)));
+  top: calc((74 * var(--uiw-u) - max(40px, 54 * var(--uiw-u))) / 2);
+  width: calc(234 * var(--uiw-u));
+  height: max(40px, calc(54 * var(--uiw-u)));
+  padding: 0 calc(8 * var(--uiw-u));
+  border: max(2px, calc(3 * var(--uiw-u))) solid #fff;
+  border-radius: calc(3 * var(--uiw-u));
+  background: linear-gradient(#ffd23c, #f2b51e 55%, #e19c12);
+  box-shadow:
+    0 0 0 max(1px, calc(2 * var(--uiw-u))) #1c0507,
+    inset 0 calc(-4 * var(--uiw-u)) 0 rgba(130, 70, 0, 0.35);
+  font: inherit;
+  font-size: calc(30 * var(--uiw-u));
+  line-height: 1;
+  color: #fff4c8;
+  white-space: pre;
+  cursor: pointer;
+  touch-action: manipulation;
+  --oc: #6a3c00;
+  --ow: 3;
+}
+.sell-all.off {
+  color: #f7e9b5;
+}
+.sell-all:active {
+  transform: scale(0.96);
+}
+.sell-items .uiw-body {
+  padding: calc(18 * var(--uiw-u)) calc(28 * var(--uiw-u)) calc(16 * var(--uiw-u)) calc(30 * var(--uiw-u));
+}
+.sell-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8 * var(--uiw-u));
+  overflow-y: auto;
+  max-height: 100%;
+  padding-right: calc(4 * var(--uiw-u));
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+.sell-list::-webkit-scrollbar {
+  width: max(4px, calc(6 * var(--uiw-u)));
+}
+.sell-list::-webkit-scrollbar-thumb {
+  background: #8a3a44;
+  border-radius: 99px;
+}
+.sell-list[hidden],
+.sell-empty[hidden] {
+  display: none;
+}
+.sell-empty {
+  margin: auto;
+  padding: 0 calc(20 * var(--uiw-u));
+  text-align: center;
+  font-size: calc(27 * var(--uiw-u));
+  line-height: 1.2;
+  color: #ff98a8;
+  --oc: #2a0408;
+  --ow: 3;
+}
+.sell-row {
+  flex: none;
+  height: calc(88 * var(--uiw-u));
+  display: flex;
+  align-items: center;
+  gap: calc(14 * var(--uiw-u));
+  padding: 0 calc(10 * var(--uiw-u)) 0 calc(9 * var(--uiw-u));
+  background: linear-gradient(#5c1a23, #4c141c);
+  border: max(2px, calc(3 * var(--uiw-u))) solid #24060a;
+  border-radius: calc(3 * var(--uiw-u));
+}
+.sell-icon {
+  flex: none;
+  width: calc(70 * var(--uiw-u));
+  height: calc(70 * var(--uiw-u));
+  background: linear-gradient(#8a3038, #6c222a);
+  border: max(1px, calc(2 * var(--uiw-u))) solid #2a070b;
+  border-radius: calc(2 * var(--uiw-u));
+  overflow: hidden;
+}
+.sell-icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.sell-words {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(4 * var(--uiw-u));
+}
+.sell-name {
+  font-size: calc(32 * var(--uiw-u));
+  line-height: 1;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  --ow: 3;
+}
+.sell-rarity {
+  font-size: calc(21 * var(--uiw-u));
+  line-height: 1;
+  --ow: 2.4;
+}
+.sell-price {
+  font-size: calc(36 * var(--uiw-u));
+  color: #5df25d;
+  white-space: nowrap;
+  --oc: #0c2a0c;
+  --ow: 3;
+}
+.sell-btn {
+  flex: none;
+  width: calc(144 * var(--uiw-u));
+  height: max(36px, calc(62 * var(--uiw-u)));
+  border: max(2px, calc(3 * var(--uiw-u))) solid #fff;
+  border-radius: calc(3 * var(--uiw-u));
+  background: linear-gradient(#ff3b3b, #e21d1d 55%, #c81414);
+  box-shadow:
+    0 0 0 max(1px, calc(2 * var(--uiw-u))) #24060a,
+    inset 0 calc(-4 * var(--uiw-u)) 0 rgba(110, 0, 0, 0.35);
+  font: inherit;
+  font-size: calc(34 * var(--uiw-u));
+  line-height: 1;
+  color: #fff;
+  cursor: pointer;
+  touch-action: manipulation;
+  --ow: 3;
+}
+.sell-btn:active {
+  transform: scale(0.95);
+}
+
+/* Narrow portrait phones: a taller window, so the rows and text stay readable. */
+@media (max-aspect-ratio: 3/4) {
+  .uiw-overlay.shopw.sell-items {
+    --uiw-w: 640;
+    --uiw-h: 760;
+  }
+  .sell-items .uiw-dialog {
+    width: calc(640 * var(--uiw-u));
+    height: calc(760 * var(--uiw-u));
+  }
+  .sell-all {
+    width: calc(200 * var(--uiw-u));
+    font-size: calc(26 * var(--uiw-u));
+  }
+  .uiw-overlay.shopw:not(.sell-items) {
+    --uiw-w: 560;
+    --uiw-h: 488;
+  }
+  .shopw:not(.sell-items) .uiw-dialog {
+    width: calc(560 * var(--uiw-u));
+  }
+}
+
+/* Firefox only (Chromium draws the ::-webkit-scrollbar look above; the standard properties
+   would switch it to the classic Windows scrollbar with arrow buttons). */
+@supports (-moz-appearance: none) {
+  .shop-row, .sell-list, .ix-tabs, .ix-grid {
+    scrollbar-width: thin;
+    scrollbar-color: #8f86b5 transparent;
+  }
+}

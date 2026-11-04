@@ -4,8 +4,8 @@
 // cycle at two depths, its phase advancing with distance travelled so the feet
 // stay planted at any speed. Writes only to bones and the avatar root's
 // rotation / position.y (the player group owns world placement).
-import { ANIM } from '../config.js'
-import { PlayerRig, PoseBuffer } from './rig.js'
+import { ANIM, SCARE } from '../config.js'
+import { BONE_INDEX, PlayerRig, PoseBuffer } from './rig.js'
 
 const TAU = Math.PI * 2
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v)
@@ -44,6 +44,7 @@ class PlayerAnimator {
     this.idleTime = 0
     this.airTime = 0
     this.bank = 0
+    this.hold = 0 // 0..1: right arm raised to hold the equipped item
   }
 
   dispose() {
@@ -52,13 +53,14 @@ class PlayerAnimator {
     this.root.position.y = 0
   }
 
-  // input: { grounded, speed, verticalVelocity, turn (-1..1) }
+  // input: { grounded, speed, verticalVelocity, turn (-1..1), holding }
   update(dt, input) {
     if (!(dt > 0)) return
     this.stateTime += dt
     this.resolveState(dt, input)
     this.writePose(dt, input)
     this.blend(dt)
+    this.applyHold(dt, input.holding)
     this.rig.applyPose(this.output)
     this.applyVisual(dt, input)
   }
@@ -173,6 +175,22 @@ class PlayerAnimator {
     } else {
       this.output.copyFrom(this.target)
     }
+  }
+
+  // Holding an item: the right arm points straight forward over every other state
+  // (Roblox tool grip), so the item stays steady in front of you while you run.
+  applyHold(dt, holding) {
+    this.hold += ((holding ? 1 : 0) - this.hold) * (1 - Math.exp(-SCARE.hold.blendRate * dt))
+    if (this.hold < 1e-3) return
+    const w = this.hold
+    const r = this.output.rotations
+    const a1 = BONE_INDEX.ArmR1 * 3
+    const a2 = BONE_INDEX.ArmR2 * 3
+    const pitch = (SCARE.hold.armPitch * Math.PI) / 180
+    r[a1] += (pitch - r[a1]) * w
+    r[a1 + 1] *= 1 - w
+    r[a1 + 2] *= 1 - w
+    for (let i = 0; i < 3; i++) r[a2 + i] *= 1 - w
   }
 
   applyVisual(dt, input) {
