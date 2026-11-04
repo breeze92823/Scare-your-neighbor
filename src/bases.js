@@ -89,7 +89,7 @@ const boothGlass = new MeshStandardMaterial({ color: '#eef4f8', emissive: '#c9d6
 // The +10/SCARE booth: a studded grey arch with red corner blocks on a dark plinth with
 // yellow trim, a red pad, two lamps under the beam, a misty glass panel at the back and a
 // step in front.
-function scareBooth() {
+export function scareBooth() {
   const g = new Group()
   studPut(g, 5.4, 0.14, 4.8, YELLOW, 0, 0.07, 0)
   studPut(g, 5.1, 0.46, 4.5, DARK, 0, 0.37, 0) // plinth, top at 0.6
@@ -115,7 +115,7 @@ function scareBooth() {
 // The +2/STEP treadmill: a dark studded frame with yellow edge rails, the arch
 // (yellow-capped posts, the display housing) at the -Z end, yellow/black striped
 // handrails and a yellow step at the +Z end. The moving parts are treadmillLive().
-function treadmill() {
+export function treadmill() {
   const g = new Group()
   studPut(g, 3.4, 0.5, 5.6, DARK, 0, 0.25, 0)
   const railMat = [std(YELLOW, { roughness: 0.5 }), std(DARK, { roughness: 0.5 })]
@@ -299,6 +299,7 @@ export function buildBases(scene) {
   const labels = {} // key -> sprite (rebuilt when its text changes)
   const plotTags = [] // plot index -> { sprite, text, mine }: the name tag over each plot (setOwner)
   const TAG_STYLE = { color: '#ffffff', outline: '#1a1c26' }
+  const PILE_STYLE = { colors: ['#5cff5c', '#5cff5c'], outline: '#0b3a10' }
   const M = BASES.machines
   const L = BASES.layout
   let mill = null // the treadmill's moving parts
@@ -380,7 +381,7 @@ export function buildBases(scene) {
       // Floating labels over the machines and the offline money.
       labels.booth = liveAt(label(M.scare.replace('{n}', '10'), 1.7, { color: '#ff4040', outline: '#3a0000' }), L.booth, 7.3)
       labels.mill = liveAt(label(M.step.replace('{n}', '2'), 1.7, { color: '#3fd8ff', outline: '#06304a' }), L.mill, 5.4)
-      liveAt(label(`${M.offline}\n$0`, 1.8, { colors: ['#5cff5c', '#5cff5c'], outline: '#0b3a10' }), L.pile, 3.4)
+      labels.pile = liveAt(label(`${M.offline}\n$0`, 1.8, PILE_STYLE), L.pile, 3.4)
       // Booth: plinth + step stay walkable (0.3 m rises), the arch and back wall are solid.
       const [bx, bz] = L.booth
       solidIn(bx, bz, Math.PI, 0, 0.3, 0, 2.55, 0.3, 2.25)
@@ -459,6 +460,19 @@ export function buildBases(scene) {
       live.add(next)
       t.sprite = next
       t.text = text
+    },
+    // The Offline Money label over the pile: "OFFLINE MONEY!" and the amount waiting.
+    setPile(text) {
+      const old = labels.pile
+      if (!old || old.userData.text === text) return
+      const next = label(`${M.offline}\n${text}`, 1.8, PILE_STYLE)
+      next.position.copy(old.position)
+      next.userData.text = text
+      live.remove(old)
+      old.material.map?.dispose()
+      old.material.dispose()
+      live.add(next)
+      labels.pile = next
     },
     // The treadmill belt's target speed (m/s; 0 = it winds down) and its display flash.
     setMill(speed) {

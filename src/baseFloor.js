@@ -23,7 +23,7 @@ import { std } from './propkit.js'
 import { formatMoney } from './state.js'
 import { at, sfx } from './audio/index.js'
 
-const FLOOR_Y = 0.16 // top of the plot's studded floor
+export const FLOOR_Y = 0.16 // top of the plot's studded floor
 const W = BASES.width
 const D = BASES.depth
 const mats = new Map()
@@ -31,7 +31,7 @@ const mat = (c) => mats.get(c) ?? mats.set(c, std(c, { roughness: 0.7 })).get(c)
 const isTouch = () => document.body.classList.contains('touch-ui')
 
 // A small blocky worker in a hard hat, feet at y = 0, facing +Z. ~1.55 m tall.
-function minionModel() {
+export function minionModel() {
   const c = F.minion
   const g = new Group()
   const box = (w, h, d, color, parent, x, y, z) => {
@@ -72,7 +72,7 @@ function minionModel() {
 
 // Scale an item model so its largest side is `h` and stand it centred on y = 0.
 // Returns its height after scaling.
-function fit(model, h) {
+export function fit(model, h) {
   const box = new Box3().setFromObject(model)
   const size = box.getSize(new Vector3())
   const k = h / Math.max(size.x, size.y, size.z, 1e-3)

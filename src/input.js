@@ -44,7 +44,7 @@ function recomputeMove() {
   if (held.has('KeyA') || held.has('ArrowLeft')) x -= 1
   inputState.move.x = Math.max(-1, Math.min(1, x + touch.x))
   inputState.move.z = Math.max(-1, Math.min(1, z + touch.z))
-  inputState.sprint = held.has('ShiftLeft') || held.has('ShiftRight') || touch.sprint
+  inputState.sprint = touch.sprint
 }
 
 // Joystick vector, each axis -1..1 (analog: a half tilt walks at half speed).

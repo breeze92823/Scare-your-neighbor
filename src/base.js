@@ -4,7 +4,7 @@
 // ones (they earn their $/s, at most `slots` of them); an item can be picked up into
 // your hotbar (`held`) and put down again, or sit in the Briefcase (not placed, not held).
 // The panels and the floor redraw through subscribe(fn).
-import { BASE_FLOOR, BASE_STORAGE, BASES, INDEX, PACKAGE_ODDS } from './config.js'
+import { BASE_FLOOR, BASE_STORAGE, BASES, HOUSES, INDEX, PACKAGE_ODDS } from './config.js'
 import { state } from './state.js'
 
 let nextId = 1
@@ -40,6 +40,8 @@ export function createBase() {
   let bought = 0 // slot purchases so far
   let level = 1 // base level (Upgrade Base): sets the minion count
   let bank = 0 // earned but not paid out yet ($, fractional)
+  let pile = 0 // Offline Money waiting at the base: earned while away, added to your cash only when you collect it (E)
+  const offlineListeners = new Set()
   let payTimer = 0
   const listeners = new Set()
   const changed = () => {
@@ -71,6 +73,61 @@ export function createBase() {
     },
     minions: () => BASE_FLOOR.minions[Math.min(level, BASE_FLOOR.minions.length) - 1],
     activeCount,
+    // Offline Money (offlineMoney.js): what the base earned while you were away piles up at the base and only
+    // reaches your cash when you collect it. It is saved, so it stays until collected.
+    pile: () => pile,
+    takePile() {
+      const n = Math.floor(pile)
+      pile -= n
+      changed()
+      return n
+    },
+    // fn(amount, secondsAway) when a loaded save brings Offline Money.
+    onOffline(fn) {
+      offlineListeners.add(fn)
+      return () => offlineListeners.delete(fn)
+    },
+    // The saved part (net.js store): the floor, the levels, the income rate the server pays offline time with, the pile.
+    snapshot: () => ({
+      baseLevel: level,
+      slotsBought: bought,
+      income: items.reduce((s, it) => s + (it.active && !it.held ? it.rate : 0), 0),
+      pile: Math.floor(pile),
+      // Items in your hands go back to the Briefcase (not placed, not earning) until you put them down again.
+      baseItems: items.map((it) => ({ name: it.name, rarity: it.rarity, value: it.value, rate: it.rate, active: it.active && !it.held, x: Number(it.x.toFixed(2)), z: Number(it.z.toFixed(2)) })),
+      basePackages: packages.map((p) => ({ tier: p.tier.name, hp: p.hp, x: Number(p.x.toFixed(2)), z: Number(p.z.toFixed(2)) })),
+    }),
+    hydrate(doc) {
+      if (Number.isFinite(doc.baseLevel)) level = Math.max(1, doc.baseLevel)
+      if (Number.isFinite(doc.slotsBought)) {
+        bought = Math.min(doc.slotsBought, BASE_STORAGE.costs.length)
+        slots = BASE_STORAGE.slots + bought * BASE_STORAGE.perBuy
+      }
+      if (Array.isArray(doc.baseItems)) {
+        items.length = 0
+        for (const it of doc.baseItems) {
+          const rarity = INDEX.rarities[it.rarity]
+          if (!rarity || !rarity.items.includes(it.name)) continue
+          items.push({ id: nextId++, name: it.name, rarity: it.rarity, value: it.value, rate: it.rate, active: !!it.active && activeCount() < slots, held: false, x: it.x, z: it.z })
+        }
+      }
+      if (Array.isArray(doc.basePackages)) {
+        packages.length = 0
+        for (const p of doc.basePackages) {
+          const tier = HOUSES.tiers.find((t) => t.name === p.tier)
+          if (!tier) continue
+          const maxHp = BASE_FLOOR.hp[tier.name] ?? BASE_FLOOR.hp.common
+          packages.push({ id: nextId++, tier, hp: Math.min(p.hp, maxHp), maxHp, x: p.x, z: p.z })
+        }
+      }
+      if (Number.isFinite(doc.pile)) pile = Math.max(0, doc.pile)
+      const offline = Math.floor(doc.offline) || 0
+      if (offline > 0) {
+        pile += offline
+        for (const fn of offlineListeners) fn(offline, doc.away || 0)
+      }
+      changed()
+    },
     income: () => items.reduce((s, it) => s + (it.active ? it.rate : 0), 0),
     // Price of the next slot purchase, or null when there are no more.
     slotCost: () => BASE_STORAGE.costs[bought] ?? null,

@@ -117,6 +117,12 @@ export function createUpgrades({ bases, base, ui, isStunned }) {
 
   return {
     levels: () => ({ booth: levels.booth, mill: levels.mill, base: base.level() }),
+    // A loaded save (net.js store): the machine levels.
+    setLevels(booth, mill) {
+      if (Number.isFinite(booth)) levels.booth = Math.min(Math.max(1, booth), U.booth.per.length)
+      if (Number.isFinite(mill)) levels.mill = Math.min(Math.max(1, mill), U.mill.per.length)
+      refresh()
+    },
     buy,
     // After baseFloor.update; pos = player feet.
     update(dt, pos) {

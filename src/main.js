@@ -35,9 +35,11 @@ import { linkBase } from './items.js'
 import { effectiveSpeed, loadout } from './loadout.js'
 import { prepareRig, wear } from './costumes/index.js'
 import { createPlayerAura } from './auras.js'
-import { initNet, net, onLeaderboard, roster, sendEmote, sendLoadout, sendPose, setStores, syncAvatar, waitForBase } from './net.js'
+import { initNet, net, onLeaderboard, roster, sendEmote, sendLoadout, sendPlot, sendPose, setStores, syncAvatar, waitForBase } from './net.js'
 import { createRemotePlayers } from './remotePlayers.js'
 import { createLeaderboards } from './leaderboards.js'
+import { createRemoteBases, plotSnapshot } from './remoteBases.js'
+import { createOfflineMoney } from './offlineMoney.js'
 import { createGift } from './gift.js'
 import { createEmotePlayer } from './emotes.js'
 import { statsStore } from './stats.js'
@@ -179,13 +181,23 @@ const playerAura = createPlayerAura(playerGroup, () => graphicsPreset(bloxity.se
 // --- Multiplayer: the other players, the leaderboards, the Free Gift --------------------------------
 const remotePlayers = createRemotePlayers(scene, { quality: () => graphicsPreset(bloxity.settings.graphics_quality).particles })
 const leaderboards = createLeaderboards(plaza)
+const remoteBases = createRemoteBases(scene) // other players' bases: machines, packages, items, minions
 onLeaderboard(() => leaderboards.refresh())
 const freeGift = createGift({ ui, plaza })
+const offlineMoney = createOfflineMoney({ base, bases, ui }) // the Offline Money pile at your base: collect with E
 // What is saved on the server (net.js): the HUD counters, the lifetime stats the boards rank, the loadout.
 setStores([
   { snapshot: () => ({ money: state.get('money'), speed: state.get('speed'), scareLevel: state.get('scareLevel') }), hydrate: (doc) => state.hydrate(doc) },
   statsStore,
   loadout,
+  // Your base: the floor, the levels, the income the server pays offline time with, the uncollected Offline Money.
+  {
+    snapshot: () => ({ ...base.snapshot(), boothLevel: upgrades.levels().booth, millLevel: upgrades.levels().mill }),
+    hydrate(doc) {
+      base.hydrate(doc)
+      upgrades.setLevels(doc.boothLevel, doc.millLevel)
+    },
+  },
 ])
 // The portal's ad breaks pause the game and its sound.
 let adPaused = false
@@ -209,6 +221,7 @@ bloxity.onChatMessage((m) => {
 })
 let presenceKey = ''
 let ownersAt = 0
+let plotAt = 0
 loadout.subscribe((kind, id) => {
   if (kind === 'aura') {
     playerAura.set(id)
@@ -301,6 +314,11 @@ function frame(fixedDt) {
     sendLoadout({ aura: loadout.worn('aura') ?? '', costume: loadout.worn('costume') ?? '', hold: carry.holdKey() })
   }
   remotePlayers.update(dt, player.renderPosition)
+  remoteBases.update(dt)
+  if (performance.now() - plotAt > 1000) {
+    plotAt = performance.now()
+    sendPlot(plotSnapshot(base, upgrades)) // your base for the others, when it changed
+  }
   if (elapsed - ownersAt > 1) {
     ownersAt = elapsed
     const owners = new Map()
@@ -330,6 +348,7 @@ function frame(fixedDt) {
   shops.update(player.position)
   playerAura.update(dt, playerGroup.visible)
   baseFloor.update(dt, player.position, player.facing, playerGroup.position) // after neighbours.update: it may set the prompt
+  offlineMoney.update(player.position) // before the signs: a sign's prompt wins when you stand at it
   upgrades.update(dt, player.position) // the machines (training) and the Upgrade sign prompts
   base.update(dt)
   ui.update(dt)
@@ -359,6 +378,6 @@ if (import.meta.env.DEV || import.meta.env.MODE === 'development') {
   const run = (seconds) => {
     for (let i = 0; i < Math.round(seconds * 30); i++) frame(1 / 30)
   }
-  window.__game = { run, net, remotePlayers, freeGift, leaderboards, emote, player, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, state, hud, neighbours, carry, ui, base, baseFloor, upgrades, shops, loadout }
+  window.__game = { run, net, offlineMoney, remotePlayers, freeGift, leaderboards, emote, player, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, state, hud, neighbours, carry, ui, base, baseFloor, upgrades, shops, loadout }
   import('./previewThumbs.js') // __thumbs.costumes() / __thumbs.items('epic'): card art contact sheets
 }

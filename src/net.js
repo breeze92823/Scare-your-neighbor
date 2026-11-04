@@ -9,7 +9,7 @@
 // neighbour animations of the houses other players engage (neighbours.js), the leaderboards and the
 // Free Gift ad payout. Never throws and never blocks play: with no server (or an unreachable one) the
 // game runs on a fresh, unsaved state and keeps trying to connect.
-import { Client } from '@colyseus/sdk'
+import { Callbacks, Client } from '@colyseus/sdk'
 import { BASES, DEV_MODE, NET, SERVER_URL } from './config.js'
 import {
   authState,
@@ -20,6 +20,7 @@ import {
   getSkinTextureUrl,
   launchRoomId,
   locateRoom,
+  reportPlayer,
   resolveServerEndpoint,
   subscribeAuth,
   updateRoom,
@@ -191,7 +192,7 @@ function avatarJson() {
   }
   return ''
 }
-const presence = { pose: null, loadout: null }
+const presence = { pose: null, loadout: null, plot: '' }
 let poseKey = ''
 let poseAt = 0
 const q = (v, k = 100) => Math.round(v * k) / k
@@ -245,11 +246,37 @@ export function sendHouseEnd(i) {
   if (net.connected) send('houseEnd', { i })
 }
 
+// This player's base for the others (remoteBases.js): a JSON snapshot, resent only when it changed.
+let plotSent = ''
+export function sendPlot(json) {
+  presence.plot = json
+  if (!net.connected || json === plotSent) return
+  plotSent = json
+  send('plot', { plot: json })
+}
+
+// Tells the Bloxity menu who else is in this room: the roster present at the first state sync is "already
+// there" (playerInRoom), later arrivals "joined" (playerJoined) -- the join toasts and the room's player list.
+function reportRoster(room) {
+  try {
+    let synced = false
+    room.onStateChange.once(() => (synced = true))
+    Callbacks.get(room).onAdd('players', (player, sessionId) => {
+      if (sessionId !== room.sessionId) reportPlayer(player.username, !synced)
+    })
+  } catch (err) {
+    console.warn('[net] could not watch the roster', err)
+  }
+}
+
 // --- Connection --------------------------------------------------------------
 function attach(room) {
   net.room = room
   net.connected = true
+  plotSent = ''
+  reportRoster(room)
   for (const [type, fn] of handlers) room.onMessage(type, fn)
+  if (presence.plot) sendPlot(presence.plot)
   room.onMessage('progress', (doc) => {
     net.hydrated = true
     lastSaved = ''
