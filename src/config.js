@@ -1,8 +1,9 @@
 // Every tunable constant lives here; the rest of src/ holds no theme values.
 
 // --- Identity -------------------------------------------------------------
-export const GAME_SLUG = 'bowling-roll' // slug registered on bloxity.io
-export const GAME_TITLE = 'Bowling Roll'
+// Slug registered on bloxity.io (resolveEndpoint, rewarded ads, leaderboards). Override per build with VITE_GAME_SLUG.
+export const GAME_SLUG = import.meta.env.VITE_GAME_SLUG || 'scare-your-neighbor'
+export const GAME_TITLE = 'Scare Your Neighbor'
 
 // Forces the Bloxity SDK and avatar CDN to be treated as unavailable (see .env.example).
 export const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
@@ -147,24 +148,68 @@ export const STALLS = [
   { name: 'Speed Auras', x: -17, z: -2, color: '#2c4fd0', stripe: '#3fb8ff', ring: '#3fd2ff', text: '#7fd0ff', outline: '#0b1a4a', goods: 'auras' },
   { name: 'Scare Costumes', x: 17, z: -2, color: '#5b33b8', stripe: '#9a63ff', ring: '#ffe03a', text: '#ffd23f', outline: '#3b2300', goods: 'costumes' },
 ]
-export const GIFT = { x: 34, z: -4, color: '#2fcf3f', ribbon: '#e2262e', pad: '#d9bc8c', ring: '#3dff5a', text: '#7cf07c', outline: '#0c3a12' }
+// The Free Gift: stand next to it and watch a rewarded ad (Bloxity ads.showRewarded) for `reward` $. The
+// server (backend AD_GIFT_MONEY / AD_GIFT_COOLDOWN_MS) decides the amount and the wait; these are the
+// offline/dev fallbacks and the wording.
+export const GIFT = {
+  x: 34, z: -4, color: '#2fcf3f', ribbon: '#e2262e', pad: '#d9bc8c', ring: '#3dff5a', text: '#7cf07c', outline: '#0c3a12',
+  reward: 100, // $
+  cooldown: 60, // s between gifts
+  range: 5, // m from the gift at which the prompt shows
+  placement: 'free-gift', // rewarded-ad placement (lowercase letters, digits, hyphens)
+  tagReady: 'Free Gift!',
+  tagBusy: 'Come back soon',
+  toastWait: 'Next gift in {s}s',
+  toastNoAd: 'No ad available right now - try again soon.',
+  toastDenied: 'Ad cancelled - no gift this time.',
+  toastPaid: 'Free Gift: +{amount}!',
+}
+// The plaza board (plaza.js): rotates through the room server's boards (backend LEADERBOARD_STATS, top
+// 7 of the whole game) and Bloxity's own board (Legion.SDK.leaderboard, the one in the portal's
+// trophy button). `bloxity` lists the boards defined with leaderboard.define() (up to 10, ids are
+// permanent: a-z 0-9 _ -); each is fed from the matching saved stat.
 export const LEADERBOARD = {
   x: 43,
   z: -9,
   yaw: -0.65, // radians; 0 faces +Z (south)
-  title: 'Top Money/s',
   frame: '#2fe33a',
-  // Placeholder rows until the backend feeds real ones.
-  rows: [
-    ['GhostHost', '$246M/s'],
-    ['BooCrew', '$244M/s'],
-    ['NightOwl', '$244M/s'],
-    ['Creepster', '$231M/s'],
-    ['Jumpscare', '$226M/s'],
-    ['Spooky', '$221M/s'],
-    ['Whisper', '$218M/s'],
+  rows: 7,
+  rotateEvery: 9, // s per page
+  boards: [
+    { stat: 'earned', title: 'Top Earners', format: 'money' },
+    { stat: 'scares', title: 'Most Scares', format: 'count' },
+    { stat: 'steals', title: 'Top Thieves', format: 'count' },
+    { stat: 'playtime', title: 'Longest Playing', format: 'time' },
   ],
+  bloxity: [
+    { id: 'earned', stat: 'earned', label: 'Top Earners', format: 'compact' },
+    { id: 'scares', stat: 'scares', label: 'Most Scares', format: 'compact' },
+    { id: 'steals', stat: 'steals', label: 'Top Thieves', format: 'compact' },
+  ],
+  bloxityEvery: 60, // s between getTop refreshes
+  submitEvery: 30, // s: Bloxity scores are sent when changed, at most this often
+  placeholder: 'Be the first on the board!',
 }
+// The multiplayer link (net.js): backend room "world" (Colyseus). Deployed builds find a pod through
+// the Bloxity matchmaker; VITE_SERVER_URL (e.g. ws://localhost:2567) points a dev build at a local server.
+export const SERVER_URL = import.meta.env.VITE_SERVER_URL || ''
+export const NET = {
+  poseHz: 12, // pose messages per second
+  houseHz: 10, // neighbour state messages per second while a house is engaged
+  saveEvery: 5, // s: a changed snapshot is saved at most this often
+  retry: 3, // s: first reconnect delay (doubles up to retryMax)
+  retryMax: 30,
+  rejoin: 2, // s before resolving a new endpoint after a drop
+  joinWait: 9, // s the loading screen waits for a room (and your base) before starting offline
+  remoteLerp: 14, // 1/s ease of a remote player toward its pose
+  predictMax: 0.25, // s of dead reckoning
+  maxRemotes: 12, // drawn at once (bases = room size, minus you)
+  maxRemotesTouch: 8,
+  remoteFade: 260, // m: farther players are hidden
+  detailRange: 70, // m: nearer players get their held item and aura
+}
+// Player-base count = the room size. backend src/constants.ts ROOM_MAX_CLIENTS must equal BASES.plots.length.
+
 // Player bases (bases.js): fenced brown plots around the south half of the plaza,
 // open on the side facing the plaza centre, each with a red-roofed Minions hut in
 // a back corner. Rows: along the south wall, and along the east and west walls.
@@ -239,12 +284,11 @@ export const BASE_FLOOR = {
 //           sideways) drifts you off at `drift` m/s.
 //   base  - Upgrade Base: each level adds a minion (BASE_FLOOR.minions).
 // E / tap the "Upgrade" prompt within `range` m of a sign buys the next level for
-// costs[level - 1] (no entry = max level). The red "!" shows while you can afford it;
-// the gem button on the signs only toasts SHOP.noGems (no gem backend yet).
+// costs[level - 1] (no entry = max level). The red "!" shows while you can afford it.
 export const UPGRADES = {
   range: 3.4,
-  booth: { name: 'Scare Booth', per: [10, 25, 60, 150, 400], costs: [12e3, 60e3, 300e3, 1.5e6], gems: 11, every: 1.2 },
-  mill: { name: 'Treadmill', per: [1, 2, 5, 12, 30], costs: [15e3, 75e3, 400e3, 2e6], gems: 11, every: 2, walk: 4.5, drift: 1.6 },
+  booth: { name: 'Scare Booth', per: [10, 25, 60, 150, 400], costs: [12e3, 60e3, 300e3, 1.5e6], every: 1.2 },
+  mill: { name: 'Treadmill', per: [1, 2, 5, 12, 30], costs: [15e3, 75e3, 400e3, 2e6], every: 2, walk: 4.5, drift: 1.6 },
   base: { name: 'Base', costs: [500e3, 5e6, 50e6, 500e6] },
 }
 export const SPAWN = { x: 0, y: 0.05, z: 24 }
@@ -527,34 +571,34 @@ export const RARITY = {
 }
 
 // Speed Auras stall (shops.js + auras.js). mult = speed multiplier while worn, price in $,
-// gems = the purple premium button (null = none, like Silver). colors = the aura's swirl
+// colors = the aura's swirl
 // [main, highlight, deep]; bg = card art background [inner, outer].
 export const AURAS = [
-  { id: 'silver', name: 'Silver Aura', rarity: 'common', mult: 1.5, price: 100, gems: null, colors: ['#e9edf2', '#ffffff', '#8c939c'], bg: ['#f2f3f5', '#9ea3ab'] },
-  { id: 'green', name: 'Green Aura', rarity: 'uncommon', mult: 2, price: 2000, gems: 4, colors: ['#36f04a', '#c8ffb4', '#0d8a1c'], bg: ['#5cf05a', '#0f7a14'] },
-  { id: 'blue', name: 'Blue Aura', rarity: 'rare', mult: 2.5, price: 35000, gems: 7, colors: ['#2c8cff', '#bfe4ff', '#0b3ab8'], bg: ['#2a7cff', '#06217a'] },
-  { id: 'purple', name: 'Purple Aura', rarity: 'epic', mult: 3, price: 700000, gems: 10, colors: ['#a43cff', '#ecc4ff', '#4c0ea0'], bg: ['#b040ff', '#3a0a7a'] },
-  { id: 'golden', name: 'Golden Aura', rarity: 'legendary', mult: 3.5, price: 15e6, gems: 20, colors: ['#ffd21a', '#fff6b0', '#b07a00'], bg: ['#ffd84a', '#a86c00'] },
-  { id: 'mystic', name: 'Mystic Aura', rarity: 'mythical', mult: 4, price: 350e6, gems: 30, colors: ['#ff2fa8', '#ffc4e8', '#a00a5a'], bg: ['#ff3fa8', '#8a0848'] },
-  { id: 'cosmic', name: 'Cosmic Aura', rarity: 'cosmic', mult: 5, price: 10e9, gems: 45, colors: ['#8a4cff', '#ff6af0', '#1c1080'], bg: ['#3a1a9a', '#0c0630'], multi: true },
-  { id: 'crimson', name: 'Crimson Aura', rarity: 'secret', mult: 7, price: 200e9, gems: 80, colors: ['#ff1a1a', '#ffb0a0', '#7a0000'], bg: ['#ff2a2a', '#6a0000'] },
-  { id: 'magma', name: 'Magma Aura', rarity: 'divine', mult: 10, price: 6e12, gems: 135, colors: ['#ff6a00', '#ffe14a', '#2a0800'], bg: ['#ff7a10', '#3a0a00'], lava: true },
-  { id: 'void', name: 'Void Aura', rarity: 'horror', mult: 14, price: 40e12, gems: 195, colors: ['#5a1aff', '#c9a8ff', '#06000f'], bg: ['#2a0a4a', '#050008'], dark: true },
+  { id: 'silver', name: 'Silver Aura', rarity: 'common', mult: 1.5, price: 100, colors: ['#e9edf2', '#ffffff', '#8c939c'], bg: ['#f2f3f5', '#9ea3ab'] },
+  { id: 'green', name: 'Green Aura', rarity: 'uncommon', mult: 2, price: 2000, colors: ['#36f04a', '#c8ffb4', '#0d8a1c'], bg: ['#5cf05a', '#0f7a14'] },
+  { id: 'blue', name: 'Blue Aura', rarity: 'rare', mult: 2.5, price: 35000, colors: ['#2c8cff', '#bfe4ff', '#0b3ab8'], bg: ['#2a7cff', '#06217a'] },
+  { id: 'purple', name: 'Purple Aura', rarity: 'epic', mult: 3, price: 700000, colors: ['#a43cff', '#ecc4ff', '#4c0ea0'], bg: ['#b040ff', '#3a0a7a'] },
+  { id: 'golden', name: 'Golden Aura', rarity: 'legendary', mult: 3.5, price: 15e6, colors: ['#ffd21a', '#fff6b0', '#b07a00'], bg: ['#ffd84a', '#a86c00'] },
+  { id: 'mystic', name: 'Mystic Aura', rarity: 'mythical', mult: 4, price: 350e6, colors: ['#ff2fa8', '#ffc4e8', '#a00a5a'], bg: ['#ff3fa8', '#8a0848'] },
+  { id: 'cosmic', name: 'Cosmic Aura', rarity: 'cosmic', mult: 5, price: 10e9, colors: ['#8a4cff', '#ff6af0', '#1c1080'], bg: ['#3a1a9a', '#0c0630'], multi: true },
+  { id: 'crimson', name: 'Crimson Aura', rarity: 'secret', mult: 7, price: 200e9, colors: ['#ff1a1a', '#ffb0a0', '#7a0000'], bg: ['#ff2a2a', '#6a0000'] },
+  { id: 'magma', name: 'Magma Aura', rarity: 'divine', mult: 10, price: 6e12, colors: ['#ff6a00', '#ffe14a', '#2a0800'], bg: ['#ff7a10', '#3a0a00'], lava: true },
+  { id: 'void', name: 'Void Aura', rarity: 'horror', mult: 14, price: 40e12, colors: ['#5a1aff', '#c9a8ff', '#06000f'], bg: ['#2a0a4a', '#050008'], dark: true },
 ]
 
 // Scare Costumes stall (shops.js + costumes/). mult = scare multiplier while worn.
 // bg = card background [top, bottom]; halo = the lighter disc behind the figure.
 export const COSTUMES = [
-  { id: 'ghost', name: 'Ghost', rarity: 'common', mult: 1.5, price: 150, gems: null, bg: ['#d6d8e6', '#a9adc2'], halo: '#eceef6' },
-  { id: 'skeleton', name: 'Skeleton', rarity: 'uncommon', mult: 2, price: 2500, gems: 4, bg: ['#d8cdb2', '#a89a7a'], halo: '#e8dfca' },
-  { id: 'zombie', name: 'Zombie', rarity: 'rare', mult: 2.5, price: 45000, gems: 7, bg: ['#5cbc4c', '#2e8a2a'], halo: '#7dd06a' },
-  { id: 'vampire', name: 'Vampire', rarity: 'epic', mult: 3, price: 850000, gems: 10, bg: ['#c42438', '#7a0c1c'], halo: '#d8485a' },
-  { id: 'witch', name: 'Witch', rarity: 'legendary', mult: 3.5, price: 18e6, gems: 20, bg: ['#9a50e0', '#5e22a8'], halo: '#b67cf0' },
-  { id: 'clown', name: 'Clown', rarity: 'mythical', mult: 4, price: 420e6, gems: 30, bg: ['#f0606a', '#c02c3a'], halo: '#f88a92' },
-  { id: 'devil', name: 'Devil', rarity: 'cosmic', mult: 5, price: 12e9, gems: 45, bg: ['#d82020', '#8a0606'], halo: '#e85050', rarityText: '#62d6ff' },
-  { id: 'scarecrow', name: 'Scarecrow', rarity: 'secret', mult: 7, price: 250e9, gems: 80, bg: ['#e0a040', '#a8681a'], halo: '#ecbe72' },
-  { id: 'reaper', name: 'Grim Reaper', rarity: 'divine', mult: 10, price: 7.5e12, gems: 135, bg: ['#3a3a4a', '#1c1c26'], halo: '#55556a' },
-  { id: 'bogbeast', name: 'Bog Beast', rarity: 'horror', mult: 14, price: 50e12, gems: 195, bg: ['#4c9a38', '#24661c'], halo: '#6cb856' },
+  { id: 'ghost', name: 'Ghost', rarity: 'common', mult: 1.5, price: 150, bg: ['#d6d8e6', '#a9adc2'], halo: '#eceef6' },
+  { id: 'skeleton', name: 'Skeleton', rarity: 'uncommon', mult: 2, price: 2500, bg: ['#d8cdb2', '#a89a7a'], halo: '#e8dfca' },
+  { id: 'zombie', name: 'Zombie', rarity: 'rare', mult: 2.5, price: 45000, bg: ['#5cbc4c', '#2e8a2a'], halo: '#7dd06a' },
+  { id: 'vampire', name: 'Vampire', rarity: 'epic', mult: 3, price: 850000, bg: ['#c42438', '#7a0c1c'], halo: '#d8485a' },
+  { id: 'witch', name: 'Witch', rarity: 'legendary', mult: 3.5, price: 18e6, bg: ['#9a50e0', '#5e22a8'], halo: '#b67cf0' },
+  { id: 'clown', name: 'Clown', rarity: 'mythical', mult: 4, price: 420e6, bg: ['#f0606a', '#c02c3a'], halo: '#f88a92' },
+  { id: 'devil', name: 'Devil', rarity: 'cosmic', mult: 5, price: 12e9, bg: ['#d82020', '#8a0606'], halo: '#e85050', rarityText: '#62d6ff' },
+  { id: 'scarecrow', name: 'Scarecrow', rarity: 'secret', mult: 7, price: 250e9, bg: ['#e0a040', '#a8681a'], halo: '#ecbe72' },
+  { id: 'reaper', name: 'Grim Reaper', rarity: 'divine', mult: 10, price: 7.5e12, bg: ['#3a3a4a', '#1c1c26'], halo: '#55556a' },
+  { id: 'bogbeast', name: 'Bog Beast', rarity: 'horror', mult: 14, price: 50e12, bg: ['#4c9a38', '#24661c'], halo: '#6cb856' },
 ]
 
 // Shop / sell lines.
@@ -562,7 +606,6 @@ export const SHOP = {
   ringRadius: 4.2, // m: standing inside a stall's ring opens its window (plaza.js draws it)
   warmDelay: 8000, // ms after start before the shop card art is pre-rendered in idle time
   noMoney: 'Not enough money!',
-  noGems: 'Gem purchases are coming soon!',
   sellEmpty: 'Nothing to sell yet - open packages to get items!',
 }
 

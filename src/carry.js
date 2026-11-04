@@ -9,7 +9,7 @@ import { std } from './propkit.js'
 import { formatMoney, state } from './state.js'
 import { sfx } from './audio/index.js'
 
-const KINDS = {
+export const KINDS = {
   box: { body: '#c99a5e', band: '#a87a42', size: 0.78 },
   crate: { body: '#8a5632', band: '#5e3519', size: 0.9 },
   safe: { body: '#6d7480', band: '#3c424c', size: 0.82 },
@@ -52,7 +52,7 @@ export function packageModel(kind) {
 }
 
 // An item model sized to `h` (largest side) with its middle at the origin (the grip).
-function gripModel(model, h) {
+export function gripModel(model, h) {
   const box = new Box3().setFromObject(model)
   const size = box.getSize(new Vector3())
   const k = h / Math.max(size.x, size.y, size.z, 1e-3)
@@ -186,6 +186,11 @@ export function createCarry(ui, playerGroup) {
       for (const it of items) if (it.home === home) it.home = null
     },
     holding: () => !!items[equipped],
+    // What the right hand holds, for the room (net.js hold): "" | "pkg:<kind>" | "item:<name>".
+    holdKey() {
+      const it = items[equipped]
+      return !it ? '' : it.item ? `item:${it.item.name}` : `pkg:${it.tier.pkg.kind}`
+    },
     // After the animator has posed the arm: move the item to the right fist.
     place(avatar) {
       const bone = avatar?.nodes?.ArmR1

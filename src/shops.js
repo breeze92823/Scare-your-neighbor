@@ -17,7 +17,7 @@ import { itemThumb } from './items/index.js'
 import { costumeThumb } from './costumes/index.js'
 import { auraCardBg, auraThumb } from './auras.js'
 import { fillImg, prioritize } from './thumbs.js'
-import { CLOSE_X, SHOP_ICONS } from './shopIcons.js'
+import { CLOSE_X } from './shopIcons.js'
 import * as snd from './audio/shopSfx.js'
 
 function el(tag, className, parent, text) {
@@ -121,17 +121,6 @@ function shopWindow({ kind, title, list, word, art }, toast) {
           replay(card, 'bump-card')
           toast(`${it.name} unlocked! x${it.mult} ${word}`, '#5dff5d', 2.6)
         })
-        if (it.gems != null) {
-          const gem = el('button', 'shop-btn shop-gem', buy)
-          gem.type = 'button'
-          gem.innerHTML = `<span class="shop-gem-icon">${SHOP_ICONS.gem}</span>`
-          ol('shop-gem-n', gem, String(it.gems))
-          press(gem, () => {
-            replay(gem, 'shake')
-            snd.deny()
-            toast(SHOP.noGems, '#d88bff')
-          })
-        }
       } else {
         const on = wornId === it.id
         const b = el('button', `shop-btn ${on ? 'shop-worn' : 'shop-equip'} ol`, buy, on ? 'Equipped' : 'Equip')

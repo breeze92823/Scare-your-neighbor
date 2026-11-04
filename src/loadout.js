@@ -40,6 +40,15 @@ export const loadout = {
     for (const fn of listeners) fn(kind, next)
     return next
   },
+  // The saved part (net.js store): owned and worn auras / costumes.
+  snapshot: () => ({ auras: [...owned.aura], aura: worn.aura ?? '', costumes: [...owned.costume], costume: worn.costume ?? '' }),
+  hydrate(doc) {
+    for (const [kind, list, one] of [['aura', 'auras', 'aura'], ['costume', 'costumes', 'costume']]) {
+      if (Array.isArray(doc[list])) owned[kind] = new Set(doc[list].filter((id) => find(kind, id)))
+      worn[kind] = typeof doc[one] === 'string' && owned[kind].has(doc[one]) ? doc[one] : null
+      for (const fn of listeners) fn(kind, worn[kind])
+    }
+  },
   speedMult: () => find('aura', worn.aura)?.mult ?? 1,
   scareMult: () => find('costume', worn.costume)?.mult ?? 1,
 }

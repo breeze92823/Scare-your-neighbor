@@ -75,10 +75,13 @@ function giftBox() {
 
 // --- Leaderboard ------------------------------------------------------------------
 
+// The board face: a title, a small source line ("Game" / "Boxity") and up to LEADERBOARD.rows rows of
+// [name, value]. setPage() repaints it; plaza callers feed it from leaderboards.js.
 function paintBoard() {
   const c = document.createElement('canvas')
   c.width = 420
   c.height = 640
+  let page = { title: LEADERBOARD.boards[0].title, sub: '', rows: [] }
   const draw = () => {
     const ctx = c.getContext('2d')
     ctx.fillStyle = '#efe4cc'
@@ -86,15 +89,24 @@ function paintBoard() {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.lineJoin = 'round'
-    ctx.font = `700 50px ${FONT_FAMILY}, sans-serif`
+    ctx.font = `700 46px ${FONT_FAMILY}, sans-serif`
     ctx.lineWidth = 10
     ctx.strokeStyle = '#0c4a14'
-    ctx.strokeText(LEADERBOARD.title, 210, 50)
+    ctx.strokeText(page.title, 210, 44)
     ctx.fillStyle = '#4fe35a'
-    ctx.fillText(LEADERBOARD.title, 210, 50)
+    ctx.fillText(page.title, 210, 44)
+    ctx.font = `600 22px ${FONT_FAMILY}, sans-serif`
+    ctx.fillStyle = '#5a4a2a'
+    ctx.fillText(page.sub, 210, 84)
+    if (!page.rows.length) {
+      ctx.font = `600 28px ${FONT_FAMILY}, sans-serif`
+      ctx.fillStyle = '#5a4a2a'
+      ctx.fillText(LEADERBOARD.placeholder, 210, 320)
+      return
+    }
     const fills = ['#d9a93e', '#9aa1ad', '#c27a3c']
-    LEADERBOARD.rows.forEach(([name, value], i) => {
-      const y = 96 + i * 76
+    page.rows.slice(0, LEADERBOARD.rows).forEach(([name, value], i) => {
+      const y = 106 + i * 76
       ctx.fillStyle = fills[i] ?? '#7d838d'
       roundRect(ctx, 14, y, 392, 66, 8)
       ctx.fill()
@@ -108,16 +120,23 @@ function paintBoard() {
       ctx.fillStyle = '#ffffff'
       ctx.fillText(String(i + 1), 40, y + 35)
       ctx.textAlign = 'left'
-      ctx.font = `600 28px ${FONT_FAMILY}, sans-serif`
-      ctx.fillText(name, 76, y + 34)
+      ctx.font = `600 26px ${FONT_FAMILY}, sans-serif`
+      ctx.fillText(String(name).slice(0, 14), 76, y + 34)
       ctx.textAlign = 'right'
       ctx.font = `700 22px ${FONT_FAMILY}, sans-serif`
-      ctx.fillText(value, 390, y + 34)
+      ctx.fillText(String(value), 390, y + 34)
       ctx.textAlign = 'center'
     })
   }
   draw()
-  return { canvas: c, draw }
+  return {
+    canvas: c,
+    draw,
+    setPage(next) {
+      page = next
+      draw()
+    },
+  }
 }
 
 function leaderboard() {
@@ -138,6 +157,10 @@ function leaderboard() {
   const face = new Mesh(new PlaneGeometry(7.7, 11.4), new MeshBasicMaterial({ map: tex }))
   face.position.set(0, 6.8, -0.04)
   g.add(face)
+  g.userData.setPage = (page) => {
+    painted.setPage(page)
+    tex.needsUpdate = true
+  }
   return g
 }
 
@@ -163,12 +186,14 @@ export function buildPlaza(scene) {
   const gift = giftBox()
   gift.position.set(GIFT.x, 0.2, GIFT.z)
   live.add(gift)
-  const giftTag = label('Free Gift!', 2.2, { color: GIFT.text, outline: GIFT.outline })
+  let giftTag = label('Free Gift!', 2.2, { color: GIFT.text, outline: GIFT.outline })
+  giftTag.userData.text = 'Free Gift!'
   giftTag.position.set(GIFT.x, 5.6, GIFT.z)
   live.add(giftTag)
   solidBox(1.3, 1.6, 1.3, GIFT.x, 1.6, GIFT.z)
 
   const board = leaderboard()
+  const setBoardPage = board.userData.setPage
   board.position.set(LEADERBOARD.x, 0, LEADERBOARD.z)
   board.rotation.y = LEADERBOARD.yaw
   statics.add(board)
@@ -181,6 +206,20 @@ export function buildPlaza(scene) {
   scene.add(baked, live)
 
   return {
+    // Repaints the leaderboard: { title, sub, rows: [[name, value], ...] } (leaderboards.js).
+    setBoard: setBoardPage,
+    // The Free Gift's name sprite text (gift.js): "Free Gift!" while ready, a hint while it is cooling down.
+    setGiftTag(text) {
+      if (giftTag.userData.text === text) return
+      const next = label(text, 2.2, { color: GIFT.text, outline: GIFT.outline })
+      next.position.copy(giftTag.position)
+      next.userData.text = text
+      live.remove(giftTag)
+      giftTag.material.map?.dispose()
+      giftTag.material.dispose()
+      live.add(next)
+      giftTag = next
+    },
     update(dt, elapsed) {
       gift.rotation.y += dt * 0.7
       gift.position.y = 0.35 + Math.sin(elapsed * 2) * 0.2

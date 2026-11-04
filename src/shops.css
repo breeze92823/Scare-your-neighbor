@@ -242,23 +242,6 @@
   background: linear-gradient(#3cea3c, #22c522 55%, #19a719);
   box-shadow: inset 0 calc(-4 * var(--uiw-u)) 0 rgba(0, 70, 0, 0.35), inset 0 calc(3 * var(--uiw-u)) 0 rgba(255, 255, 255, 0.25);
 }
-.shop-gem {
-  flex: none;
-  width: calc(82 * var(--uiw-u));
-  border-color: #2a0a3a;
-  background: linear-gradient(#c84af6, #a128e0 55%, #8a1cc8);
-  box-shadow: inset 0 calc(-4 * var(--uiw-u)) 0 rgba(60, 0, 90, 0.35), inset 0 calc(3 * var(--uiw-u)) 0 rgba(255, 255, 255, 0.25);
-}
-.shop-gem-icon {
-  width: calc(26 * var(--uiw-u));
-  height: calc(26 * var(--uiw-u));
-  flex: none;
-}
-.shop-gem-icon svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
 .shop-worn {
   flex: 1;
   background: linear-gradient(#3d6b3d, #2c522c);

@@ -1,5 +1,6 @@
+import * as THREE from 'three'
 import { ACESFilmicToneMapping, Clock, Group, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, WebGLRenderer } from 'three'
-import { CAMERA, graphicsPreset, HOUSES, RENDER, SCARE } from './config.js'
+import { BASES, CAMERA, graphicsPreset, HOUSES, NET, RENDER, SCARE } from './config.js'
 import * as bloxity from './bloxity.js'
 import { install as installInput, onKey } from './input.js'
 import { installTouch } from './touch.js'
@@ -34,6 +35,13 @@ import { linkBase } from './items.js'
 import { effectiveSpeed, loadout } from './loadout.js'
 import { prepareRig, wear } from './costumes/index.js'
 import { createPlayerAura } from './auras.js'
+import { initNet, net, onLeaderboard, roster, sendEmote, sendLoadout, sendPose, setStores, syncAvatar, waitForBase } from './net.js'
+import { createRemotePlayers } from './remotePlayers.js'
+import { createLeaderboards } from './leaderboards.js'
+import { createGift } from './gift.js'
+import { createEmotePlayer } from './emotes.js'
+import { statsStore } from './stats.js'
+import { A as audioCore } from './audio/core.js'
 
 // Boot order: Bloxity SDK -> renderer -> Rapier (async wasm) -> ground + sky + lighting,
 // player body -> avatar (async, swaps in when ready) -> loop. The SDK is optional at every step.
@@ -58,6 +66,7 @@ function applySetting(key, value) {
 bloxity.onSetting(applySetting)
 installAudio() // starts on the first gesture
 bloxity.init()
+initNet() // connects to the room server once Bloxity auth has settled (net.js)
 
 // --- Renderer ---------------------------------------------------------------
 const preset = graphicsPreset(bloxity.settings.graphics_quality)
@@ -93,6 +102,12 @@ for (const key of Object.keys(bloxity.settings)) applySetting(key, bloxity.setti
 bloxity.loadingStep('Starting physics')
 await initPhysics()
 
+// One room seats as many players as there are bases: the server gives this player one. The machines of
+// your base are built on it, so wait for the answer (a few seconds at most; offline play keeps the default).
+bloxity.loadingStep('Finding a room')
+const slot = await waitForBase(NET.joinWait * 1000)
+if (slot >= 0) BASES.mine = slot
+
 lighting = createLighting(scene, renderer, preset)
 buildWorld(scene) // baseplate, walls, road, lamps, trees
 const houses = buildHouses(scene) // the North Lane
@@ -117,6 +132,8 @@ playerGroup.rotation.order = 'YXZ' // yaw, then the knocked-down tip
 scene.add(playerGroup)
 let avatar = null
 let animator = null
+const emote = createEmotePlayer() // the Bloxity emote playing on you (emotes.js)
+let emoteSent = false
 let generation = 0
 let avatarReady = false
 
@@ -125,6 +142,7 @@ function setAvatar(next) {
   disposeAnimator(animator)
   avatar = next
   playerGroup.add(avatar)
+  emote.stop()
   prepareRig(avatar) // costume holders, at the bind pose (before the animator binds)
   wear(avatar, loadout.worn('costume'))
   animator = makeAnimator(avatar)
@@ -157,6 +175,40 @@ state.subscribe((key) => {
 const shops = createShops({ toast: ui.toast, store: linkBase(base) })
 hud.setToast(ui.toast)
 const playerAura = createPlayerAura(playerGroup, () => graphicsPreset(bloxity.settings.graphics_quality).particles)
+
+// --- Multiplayer: the other players, the leaderboards, the Free Gift --------------------------------
+const remotePlayers = createRemotePlayers(scene, { quality: () => graphicsPreset(bloxity.settings.graphics_quality).particles })
+const leaderboards = createLeaderboards(plaza)
+onLeaderboard(() => leaderboards.refresh())
+const freeGift = createGift({ ui, plaza })
+// What is saved on the server (net.js): the HUD counters, the lifetime stats the boards rank, the loadout.
+setStores([
+  { snapshot: () => ({ money: state.get('money'), speed: state.get('speed'), scareLevel: state.get('scareLevel') }), hydrate: (doc) => state.hydrate(doc) },
+  statsStore,
+  loadout,
+])
+// The portal's ad breaks pause the game and its sound.
+let adPaused = false
+bloxity.onAdBreak((on) => {
+  adPaused = on
+  if (on) audioCore.ctx?.suspend?.().catch?.(() => {})
+  else audioCore.ctx?.resume?.().catch?.(() => {})
+})
+// Emote wheel: play the clip on yourself and tell the room, so everyone sees the same emote.
+bloxity.onEmote(async (id) => {
+  const clip = (await bloxity.loadEmoteClips()).get(id)
+  if (!clip || !avatar) return
+  emote.play(avatar, clip)
+  sendEmote(id)
+  emoteSent = true
+})
+// Chat bubbles over the speaker: you, or the remote player with that Bloxity id.
+bloxity.onChatMessage((m) => {
+  const root = m.isLocalPlayer ? playerGroup : remotePlayers.byUid(m.userId)
+  if (root) bloxity.chatBubble(THREE, root, m)
+})
+let presenceKey = ''
+let ownersAt = 0
 loadout.subscribe((kind, id) => {
   if (kind === 'aura') {
     playerAura.set(id)
@@ -175,6 +227,7 @@ async function loadAvatar() {
     if (mine !== generation) return
     applyProportions(group, bloxity.authState.user ? bloxity.getProportions() : null)
     setAvatar(group)
+    syncAvatar() // the others get the new look
   } finally {
     if (mine === generation) avatarReady = true
   }
@@ -189,7 +242,10 @@ bloxity.subscribeAuth((s) => {
   }
 })
 bloxity.onAvatarChanged(loadAvatar)
-bloxity.onProportionsChanged(() => applyProportions(avatar, bloxity.getProportions()))
+bloxity.onProportionsChanged(() => {
+  applyProportions(avatar, bloxity.getProportions())
+  syncAvatar()
+})
 bloxity.onRespawnRequest(respawn)
 
 // --- Modes + keys --------------------------------------------------------------
@@ -213,7 +269,7 @@ function frame(fixedDt) {
   const dt = fixedDt ?? Math.min(clock.getDelta(), 0.1) // clamp huge frames (tab switch, breakpoint)
   const elapsed = clock.elapsedTime
 
-  stepPhysics(dt) // runs the player controller + world at the fixed rate, interpolates bodies
+  if (!adPaused) stepPhysics(dt) // runs the player controller + world at the fixed rate, interpolates bodies
   interpolatePlayer()
 
   // Caught by a neighbour: knocked flat on your back until the stun wears off.
@@ -228,13 +284,37 @@ function frame(fixedDt) {
     turn: 0,
     holding: carry.holding(),
   })
+  // A Bloxity emote ends when you move or jump (or when its clip is over); the room hears it stop.
+  if (emote.active && (!player.grounded || Math.hypot(player.velocity.x, player.velocity.z) > 0.8 || player.stunned > 0)) emote.stop()
+  emote.update(dt, avatar)
+  if (emoteSent && !emote.active) {
+    emoteSent = false
+    sendEmote('')
+  }
   carry.place(avatar)
+
+  // Presence: what the others draw of you (pose ~12x/s while it changes; hold / gear when they change).
+  sendPose({ ...player.position, yaw: player.facing, speed: Math.hypot(player.velocity.x, player.velocity.z), vy: player.velocity.y, grounded: player.grounded, stunned: player.stunned > 0 })
+  const key = `${loadout.worn('aura') ?? ''}|${loadout.worn('costume') ?? ''}|${carry.holdKey()}`
+  if (key !== presenceKey) {
+    presenceKey = key
+    sendLoadout({ aura: loadout.worn('aura') ?? '', costume: loadout.worn('costume') ?? '', hold: carry.holdKey() })
+  }
+  remotePlayers.update(dt, player.renderPosition)
+  if (elapsed - ownersAt > 1) {
+    ownersAt = elapsed
+    const owners = new Map()
+    roster()?.forEach((p) => p.base >= 0 && owners.set(p.base, p.username || 'Player'))
+    for (let i = 0; i < BASES.plots.length; i++) if (i !== BASES.mine) bases.setOwner(i, owners.get(i) ?? null)
+  }
+  leaderboards.update(dt)
 
   updateCamera(camera, dt)
   plaza.update(dt, elapsed)
   bases.update(elapsed, dt)
   houses.update(player.position)
   neighbours.update(dt, player.position)
+  freeGift.update(player.position) // after neighbours.update: it clears the prompt
   updateAudio(dt, {
     camera,
     player: {
@@ -279,6 +359,6 @@ if (import.meta.env.DEV || import.meta.env.MODE === 'development') {
   const run = (seconds) => {
     for (let i = 0; i < Math.round(seconds * 30); i++) frame(1 / 30)
   }
-  window.__game = { run, player, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, state, hud, neighbours, carry, ui, base, baseFloor, upgrades, shops, loadout }
+  window.__game = { run, net, remotePlayers, freeGift, leaderboards, emote, player, scene, renderer, camera, postfx, bodies: bodyCount, toggleMode, teleport, state, hud, neighbours, carry, ui, base, baseFloor, upgrades, shops, loadout }
   import('./previewThumbs.js') // __thumbs.costumes() / __thumbs.items('epic'): card art contact sheets
 }

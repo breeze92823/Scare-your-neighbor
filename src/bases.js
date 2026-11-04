@@ -10,7 +10,7 @@ import { paintChevrons, paintText, roundRect } from './textures.js'
 // back-left corner. The local player's base also gets its machines on the grass
 // out front (BASES.layout), after the reference screenshots: the +10/SCARE booth
 // and the +2/STEP treadmill facing the plot, each with an Upgrade sign beside it
-// (Level 1 > Level 2, $ and gem buttons, a bobbing red "!"), the Upgrade Base sign
+// (Level 1 > Level 2, $ button, a bobbing red "!"), the Upgrade Base sign
 // at the front corner facing out, and the offline-money pile inside. What moves on
 // your plot (packages, minions, items, the "2/7" and "1/s" labels) is baseFloor.js.
 
@@ -186,8 +186,8 @@ function treadmillLive() {
 }
 
 // Upgrade sign face (canvas), drawn from `info` { title, level, cost (text or null = max),
-// gems }: title, "Level 1 > Level 2" (or "Level 5 MAX"), then a green $ button with an
-// up-arrow badge and, when `gems`, a purple gem button. Repaint with draw() after a change.
+// }: title, "Level 1 > Level 2" (or "Level 5 MAX"), then a green $ button with an
+// up-arrow badge. Repaint with draw() after a change.
 function paintUpgrade(info) {
   const c = document.createElement('canvas')
   c.width = 512
@@ -209,7 +209,7 @@ function paintUpgrade(info) {
       ctx.fillStyle = fill
       ctx.fillText(t, x, y)
     }
-    const { title, level, cost, gems } = info
+    const { title, level, cost } = info
     const max = cost == null
     text(title, 256, 58, 62, '#ffffff')
     text(max ? `Level ${level} MAX` : `Level ${level} > Level ${level + 1}`, 256, 128, 48, max ? '#ffd23f' : '#7dff5a')
@@ -226,23 +226,16 @@ function paintUpgrade(info) {
       ctx.strokeStyle = edge
       ctx.lineWidth = 8
       ctx.beginPath()
-      if (badge === 'gem') ctx.arc(x + 46, 224, 15, 0, Math.PI * 2)
-      else {
-        ctx.moveTo(x + 46, 240)
-        ctx.lineTo(x + 46, 208)
-        ctx.moveTo(x + 32, 222)
-        ctx.lineTo(x + 46, 208)
-        ctx.lineTo(x + 60, 222)
-      }
+      ctx.moveTo(x + 46, 240)
+      ctx.lineTo(x + 46, 208)
+      ctx.moveTo(x + 32, 222)
+      ctx.lineTo(x + 46, 208)
+      ctx.lineTo(x + 60, 222)
       ctx.stroke()
       text(value, x + 48 + (w - 48) / 2, 224, 52, '#ffffff')
     }
     if (max) button(56, 400, '#8a90a0', '#4a4f5c', 'MAX', 'up')
-    else if (gems == null) button(56, 400, '#45dc3c', '#1d7a1a', cost, 'up')
-    else {
-      button(28, 270, '#45dc3c', '#1d7a1a', cost, 'up')
-      button(310, 174, '#d84cff', '#7a1a9a', String(gems), 'gem')
-    }
+    else button(56, 400, '#45dc3c', '#1d7a1a', cost, 'up')
   }
   draw()
   return { canvas: c, draw }
@@ -304,12 +297,14 @@ export function buildBases(scene) {
   const marks = {} // key -> { mk, y, phase, on }: the bobbing "!"s
   const signs = {} // key -> { info, repaint }
   const labels = {} // key -> sprite (rebuilt when its text changes)
+  const plotTags = [] // plot index -> { sprite, text, mine }: the name tag over each plot (setOwner)
+  const TAG_STYLE = { color: '#ffffff', outline: '#1a1c26' }
   const M = BASES.machines
   const L = BASES.layout
   let mill = null // the treadmill's moving parts
   let millSpeed = 0 // m/s the belt runs at (eased toward the target from setMill)
   let millTarget = 0
-  const signInfo = (key, title, gems) => (signs[key] = { info: { title, level: 1, cost: null, gems } }).info
+  const signInfo = (key, title) => (signs[key] = { info: { title, level: 1, cost: null } }).info
 
   BASES.plots.forEach((p, i) => {
     const g = new Group()
@@ -347,12 +342,12 @@ export function buildBases(scene) {
       mill.g.position.set(mx, 0, mz)
       mill.g.rotation.y = p.yaw + Math.PI
       live.add(mill.g)
-      for (const [key, title, gems, spot, rot, w, h] of [
-        ['booth', 'Upgrade', 11, L.boothSign, Math.PI],
-        ['mill', 'Upgrade', 11, L.millSign, Math.PI],
-        ['base', 'Upgrade Base', null, L.upgrade, 0, 3.3, 1.7],
+      for (const [key, title, spot, rot, w, h] of [
+        ['booth', 'Upgrade', L.boothSign, Math.PI],
+        ['mill', 'Upgrade', L.millSign, Math.PI],
+        ['base', 'Upgrade Base', L.upgrade, 0, 3.3, 1.7],
       ]) {
-        const sign = upgradeSign(signInfo(key, title, gems), w, h)
+        const sign = upgradeSign(signInfo(key, title), w, h)
         signs[key].repaint = sign.repaint
         add(sign.g, spot, rot)
       }
@@ -367,8 +362,9 @@ export function buildBases(scene) {
     root.add(g)
 
     // Name tag: out front between the booth and the treadmill (an empty plot: its middle).
-    const tag = label(mine ? 'Your Base' : 'Empty Base', 1.1, { color: '#ffffff', outline: '#1a1c26' })
+    const tag = label(mine ? 'Your Base' : 'Empty Base', 1.1, TAG_STYLE)
     liveAt(tag, mine ? L.owner : [0, 0], mine ? 3.0 : 2.6)
+    plotTags[i] = { sprite: tag, text: mine ? 'Your Base' : 'Empty Base', mine }
 
     // Colliders: the three fence sides and the hut.
     let [x, z] = at(0, -D / 2)
@@ -447,6 +443,22 @@ export function buildBases(scene) {
       old.material.dispose()
       live.add(next)
       labels[key] = next
+    },
+    // The name tag over plot `i` (net.js: who the server gave it to): "<name>'s Base", or "Empty Base" for null.
+    // Your own plot keeps "Your Base".
+    setOwner(i, name) {
+      const t = plotTags[i]
+      if (!t || t.mine) return
+      const text = name ? `${name}'s Base` : 'Empty Base'
+      if (t.text === text) return
+      const next = label(text, 1.1, TAG_STYLE)
+      next.position.copy(t.sprite.position)
+      live.remove(t.sprite)
+      t.sprite.material.map?.dispose()
+      t.sprite.material.dispose()
+      live.add(next)
+      t.sprite = next
+      t.text = text
     },
     // The treadmill belt's target speed (m/s; 0 = it winds down) and its display flash.
     setMill(speed) {

@@ -2,7 +2,7 @@
 // here may throw when the SDK is missing: a blocked sdk.bloxity.io leaves the
 // game fully playable on the default avatar and keyboard controls.
 // Docs: https://docs.bloxity.io/#html5
-import { GAME_SLUG, GAME_TITLE, SETTINGS, DEV_MODE, coerceSetting } from './config.js'
+import { GAME_SLUG, GAME_TITLE, GIFT, LEADERBOARD, SETTINGS, DEV_MODE, coerceSetting } from './config.js'
 
 export function sdk() {
   if (DEV_MODE) return null
@@ -24,6 +24,9 @@ const proportionListeners = new Set()
 const authListeners = new Set()
 const settingListeners = new Set()
 const respawnListeners = new Set()
+const emoteListeners = new Set()
+const chatListeners = new Set()
+const adBreakListeners = new Set()
 const unsubscribers = []
 
 function emit(listeners, ...args) {
@@ -60,6 +63,21 @@ export function onSetting(fn) {
 export function onRespawnRequest(fn) {
   respawnListeners.add(fn)
   return () => respawnListeners.delete(fn)
+}
+// The portal's emote wheel: fn(emoteId) when the local player picks an emote (Legion.SDK.player 'play_emote').
+export function onEmote(fn) {
+  emoteListeners.add(fn)
+  return () => emoteListeners.delete(fn)
+}
+// Bloxity chat: fn({ userId, username, text, isGif, at, isLocalPlayer }) for every message in the room.
+export function onChatMessage(fn) {
+  chatListeners.add(fn)
+  return () => chatListeners.delete(fn)
+}
+// fn(true) when an ad break starts (pause + mute), fn(false) when it ends.
+export function onAdBreak(fn) {
+  adBreakListeners.add(fn)
+  return () => adBreakListeners.delete(fn)
 }
 
 // --- Auth ---------------------------------------------------------------
@@ -178,10 +196,23 @@ export function init() {
     }
 
     unsubscribers.push(
-      SDK.player.onEvent((event) => {
+      SDK.player.onEvent((event, data) => {
         if (event === 'respawn_request') emit(respawnListeners)
+        else if (event === 'play_emote' && data) emit(emoteListeners, String(data))
       }),
     )
+    // The portal draws the emote wheel and the chat box; the game plays the emote and floats the bubble.
+    try {
+      SDK.game.registerFeature?.('emotes')
+    } catch {
+      // Older SDK builds.
+    }
+    const offChat = SDK.chat?.onMessage?.((m) => emit(chatListeners, m))
+    if (typeof offChat === 'function') unsubscribers.push(offChat)
+    const offStart = SDK.ads?.onBreakStart?.(() => emit(adBreakListeners, true))
+    const offEnd = SDK.ads?.onBreakEnd?.(() => emit(adBreakListeners, false))
+    for (const off of [offStart, offEnd]) if (typeof off === 'function') unsubscribers.push(off)
+    defineBoards()
 
     SDK.game.loadingStep('Building the island')
   } catch (err) {
@@ -379,5 +410,115 @@ export function requestFullscreen(on) {
     else SDK.portal.exitFullscreen()
   } catch {
     // Ignore.
+  }
+}
+
+// --- Chat bubbles ---------------------------------------------------------------
+// Floats the message over `root` (a Three.js Object3D: the player group / a remote player's group) for
+// SDK.chat.bubbleSeconds. Returns false when the SDK can't (offline).
+export function chatBubble(THREE, root, message) {
+  try {
+    const chat = sdk()?.chat
+    if (!chat?.attachBubble || !root) return false
+    chat.attachBubble(THREE, root, chat.bubbleText ? chat.bubbleText(message) : String(message.text ?? ''), { height: 2.6 })
+    return true
+  } catch {
+    return false
+  }
+}
+
+// --- Emotes ---------------------------------------------------------------------
+// The emote clips from the portal: Map id -> { len, loop, tracks: { bone: [[t, x, y, z], ...] } } (degrees).
+let emoteClips = null
+export function loadEmoteClips() {
+  emoteClips ||= (async () => {
+    const out = new Map()
+    try {
+      const apiUrl = sdk()?.environment?.()?.apiUrl
+      if (!apiUrl) return out
+      const res = await fetch(`${apiUrl.replace(/\/$/, '')}/v1/avatar/emotes`)
+      if (!res.ok) return out
+      const body = await res.json()
+      const list = Array.isArray(body) ? body : Array.isArray(body?.emotes) ? body.emotes : Object.entries(body?.emotes ?? body ?? {}).map(([id, c]) => ({ id, ...c }))
+      for (const c of list) {
+        const id = String(c?.id ?? c?._id ?? c?.emoteId ?? '')
+        if (id && c.tracks && Number(c.len) > 0) out.set(id, { len: Number(c.len), loop: !!c.loop, tracks: c.tracks })
+      }
+    } catch (err) {
+      console.warn('[bloxity] emote clips failed to load', err)
+    }
+    return out
+  })()
+  return emoteClips
+}
+
+// --- Rewarded ads (the Free Gift) ---------------------------------------------------
+export const adsAvailable = () => {
+  if (DEV_MODE) return true // the simulated ad
+  try {
+    const ads = sdk()?.ads
+    return !!ads && (typeof ads.isAvailable !== 'function' || !!ads.isAvailable())
+  } catch {
+    return false
+  }
+}
+// Plays a rewarded ad: { status: 'completed' | 'skipped' | 'no-fill' | 'blocked' | 'error' | 'denied' | 'disabled',
+// rewardToken?, reason?, test? }. Never rejects. Grant only on 'completed'. Without the SDK (dev mode) a
+// short simulated ad completes, so the whole gift flow can be tried locally.
+export async function showRewardedAd(placement = GIFT.placement) {
+  const ads = sdk()?.ads
+  if (!ads?.showRewarded) {
+    if (!DEV_MODE) return { status: 'disabled', reason: 'no-sdk' }
+    await new Promise((r) => setTimeout(r, 1200))
+    return { status: 'completed', test: true, rewardToken: 'dev-token' }
+  }
+  try {
+    return (await ads.showRewarded(placement)) ?? { status: 'error' }
+  } catch (err) {
+    return { status: 'error', reason: String(err?.message ?? err) }
+  }
+}
+
+// --- Leaderboards -----------------------------------------------------------------
+// The portal draws its own leaderboard button (Boxity toolbar) once boards are defined. define() runs once
+// after init; the first call creates each board, later edits are made in the Boxity dashboard.
+function defineBoards() {
+  try {
+    sdk()?.leaderboard?.define?.(
+      LEADERBOARD.bloxity.map((b) => ({ id: b.id, label: b.label, order: 'desc', mode: 'best', format: 'compact', reset: 'none' })),
+    )
+  } catch (err) {
+    console.warn('[bloxity] leaderboard.define failed', err)
+  }
+}
+// Submits a final score (null without a Boxity player or the SDK). Never every frame.
+export async function submitScore(id, score) {
+  try {
+    return (await sdk()?.leaderboard?.submit?.(id, score)) ?? null
+  } catch {
+    return null
+  }
+}
+// { rows: [{ rank, name, score }], me } from Bloxity's board, or null.
+export async function getTopBoard(id, limit = 7) {
+  try {
+    const lb = sdk()?.leaderboard
+    if (!lb?.getTop) return null
+    const top = await lb.getTop(id, { period: 'all', limit })
+    const rows = (top?.rows ?? []).map((r, i) => ({
+      rank: r.rank ?? i + 1,
+      name: String(r.displayName ?? r.username ?? r.name ?? r.user?.displayName ?? r.user?.username ?? 'Player'),
+      score: Number(r.score ?? r.value ?? 0),
+    }))
+    return { rows, me: top?.me ?? null }
+  } catch {
+    return null
+  }
+}
+export function openBoard(id) {
+  try {
+    return !!sdk()?.leaderboard?.open?.(id)
+  } catch {
+    return false
   }
 }

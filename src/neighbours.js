@@ -21,6 +21,8 @@ import { effectiveScare } from './loadout.js'
 import { packageModel } from './carry.js'
 import { std } from './propkit.js'
 import { at as hear, sfx } from './audio/index.js'
+import { addStat } from './stats.js'
+import { net, remoteHouses, sendHouse, sendHouseEnd } from './net.js'
 
 const L = SCARE.lines
 const SCALE = 0.86 // model units -> m (the model is ~2.15 units tall)
@@ -172,6 +174,7 @@ function buildNpc(npc, pkgKind) {
 
 function setFace(m, mood) {
   const mats = m.head.material
+  m.mood = mood
   const f = (m.faces[mood] ||= faceMat(m.npc.head, mood))
   if (mats[4] !== f) mats[4] = f
 }
@@ -255,6 +258,15 @@ export function buildNeighbours(scene, homes, { ui, carry, hud, doorWood }) {
     tag: null,
     emoji: null,
     pkgTag: null,
+    // Multiplayer (net.js): a house another player is engaging is `remote` -- it plays the animation
+    // the server relays instead of running its own state machine.
+    remote: false,
+    remoteSeq: -1,
+    remoteState: '',
+    sentActive: false, // this player's driving of the house is being relayed
+    bubbleRed: false,
+    sayNonce: 0,
+    saySent: 0,
   }))
   const active = new Set() // houses with something going on
   let elapsed = 0
@@ -289,6 +301,8 @@ export function buildNeighbours(scene, homes, { ui, carry, hud, doorWood }) {
     h.bubble.el.style.animation = ''
     h.bubbleT = seconds
     h.bubbleAtDoor = atDoor
+    h.bubbleRed = red
+    h.sayNonce++
   }
 
   function hush(h) {
@@ -343,6 +357,7 @@ export function buildNeighbours(scene, homes, { ui, carry, hud, doorWood }) {
     const s = hear(h.pos.x, h.pos.z)
     sfx.scare()
     if (Math.random() * 100 < chance) {
+      addStat('scares')
       sfx.yelp(s)
       setTimeout(() => sfx.packageDrop(hear(h.step.x, h.step.z)), 380)
       setState(h, 'scared', SCARE.scaredTime)
@@ -368,6 +383,7 @@ export function buildNeighbours(scene, homes, { ui, carry, hud, doorWood }) {
       return
     }
     h.pkg.visible = false
+    addStat('steals')
     sfx.steal()
     hud.discover(h.tier.name)
     setState(h, 'react', SCARE.reactTime)
@@ -387,6 +403,7 @@ export function buildNeighbours(scene, homes, { ui, carry, hud, doorWood }) {
       }
     }
     for (const h of list) {
+      if (h.remote) continue // another player is on it: you only watch
       const dDoor = Math.hypot(p.x - h.door.x, p.z - h.door.z)
       if (dDoor > SCARE.scareRange) continue
       if (h.state === 'answer') consider('scare', h, dDoor - 100, SCARE.scareRange) // the scare outranks the rest
@@ -397,7 +414,7 @@ export function buildNeighbours(scene, homes, { ui, carry, hud, doorWood }) {
   }
 
   function act(c) {
-    if (!c || player.stunned > 0) return
+    if (!c || c.h.remote || player.stunned > 0) return
     if (c.kind === 'knock') knock(c.h)
     else if (c.kind === 'scare' && c.h.state === 'answer') scare(c.h)
     else if (c.kind === 'steal' && c.h.state === 'scared') steal(c.h)
@@ -514,6 +531,12 @@ export function buildNeighbours(scene, homes, { ui, carry, hud, doorWood }) {
         break
     }
 
+    present(h, dt)
+    if (h.state === 'home' && h.cooldown <= 0 && h.bubbleT <= 0) active.delete(h)
+  }
+
+  // What the house looks like this frame: the neighbour's model and labels, the speech bubble.
+  function present(h, dt) {
     if (h.m?.root.visible) {
       h.m.root.position.copy(h.pos)
       h.m.root.rotation.y = h.facing
@@ -540,7 +563,126 @@ export function buildNeighbours(scene, homes, { ui, carry, hud, doorWood }) {
         if (h.bubbleT <= 0) h.bubble.show(false)
       }
     }
-    if (h.state === 'home' && h.cooldown <= 0 && h.bubbleT <= 0) active.delete(h)
+  }
+
+
+  // --- Multiplayer: the houses other players engage (backend `state.houses`) ---
+  const angleDelta = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from))
+
+  // Plays the relayed state of house `h` (`e`): the same model, door, face, emoji, bubble and sounds as
+  // the player driving it sees, eased toward the position the server last sent.
+  function applyRemote(h, dt, e) {
+    ensure(h)
+    const first = !h.remote
+    if (first) {
+      h.remote = true
+      h.remoteSeq = e.seq
+      h.remoteState = ''
+      h.cooldown = 0
+      h.walked = 0
+      active.add(h)
+    }
+    const near = !first && h.m.root.visible
+    const k = near ? 1 - Math.exp(-16 * dt) : 1
+    h.pos.x += (e.x - h.pos.x) * k
+    h.pos.z += (e.z - h.pos.z) * k
+    h.pos.y = 0
+    h.facing += angleDelta(h.facing, e.facing) * k
+    h.speed = e.speed
+    h.pose = e.pose
+    h.state = e.state
+    if (e.state !== h.remoteState) {
+      const s = hear(h.pos.x, h.pos.z)
+      if (e.state === 'knocking') sfx.knock(hear(h.door.x, h.door.z))
+      else if (e.state === 'scared') {
+        sfx.yelp(s)
+        setTimeout(() => sfx.packageDrop(hear(h.step.x, h.step.z)), 380)
+      } else if (e.state === 'laugh') setTimeout(() => sfx.laugh(s), 300)
+      else if (e.state === 'react') sfx.steal()
+      else if (e.state === 'chase') sfx.shout(s)
+      else if (e.state === 'gotcha') sfx.caught(s)
+      else if (e.state === 'grr') sfx.grumble(s)
+      h.remoteState = e.state
+    }
+    if (e.door !== h.m.root.visible) {
+      sfx[e.door ? 'doorOpen' : 'doorClose'](hear(h.door.x, h.door.z))
+      if (e.door) h.pos.set(e.x, 0, e.z)
+    }
+    h.m.root.visible = e.door
+    h.openDoor.visible = e.door
+    h.tag.show(e.door)
+    h.m.held.visible = e.held
+    h.pkg.visible = e.pkg
+    setFace(h.m, e.face)
+    emoji(h, e.emoji || null)
+    if (e.seq !== h.remoteSeq) {
+      h.remoteSeq = e.seq
+      if (e.bubble) say(h, e.bubble, e.red, 30, false)
+      else hush(h)
+    }
+    present(h, dt)
+  }
+
+  // The driver is done (or gone): the neighbour is back inside.
+  function endRemote(h) {
+    h.remote = false
+    if (h.m) {
+      if (h.m.root.visible) sfx.doorClose(hear(h.door.x, h.door.z))
+      h.m.root.visible = false
+      h.openDoor.visible = false
+      h.pkg.visible = false
+      h.tag.show(false)
+      h.pkgTag.show(false)
+      emoji(h, null)
+      hush(h)
+    }
+    setState(h, 'home')
+    h.cooldown = SCARE.cooldown
+    h.speed = 0
+  }
+
+  // What this player is driving, for the others (net.js sendHouse): the neighbour's state, position and look.
+  function snapshot(h) {
+    const say = h.sayNonce !== h.saySent
+    h.saySent = h.sayNonce
+    return {
+      state: h.state,
+      pose: h.pose,
+      face: h.m?.mood ?? 'happy',
+      x: h.pos.x,
+      z: h.pos.z,
+      facing: h.facing,
+      speed: h.speed,
+      held: !!h.m?.held.visible,
+      pkg: !!h.pkg?.visible,
+      door: !!h.m?.root.visible,
+      emoji: h.emoji?.shown ? h.emoji.text : '',
+      bubble: h.bubbleT > 0 ? h.bubble.text : '',
+      red: h.bubbleRed,
+      say,
+    }
+  }
+
+  // Each frame: houses other players drive play the relayed animation; houses this player drives are relayed.
+  function syncNet(dt) {
+    const theirs = remoteHouses()
+    list.forEach((h, i) => {
+      const e = theirs?.get(String(i))
+      if (e && e.owner !== net.sessionId) {
+        if (h.sentActive) h.sentActive = false // lost the house to someone who got there first: just watch
+        applyRemote(h, dt, e)
+        return
+      }
+      if (h.remote) endRemote(h)
+      if (h.state !== 'home' && h.m) {
+        const fresh = h.sayNonce !== h.saySent // a new line goes out at once, not at the next tick
+        sendHouse(i, snapshot(h), fresh)
+        h.sentActive = true
+      } else if (h.sentActive) {
+        h.sentActive = false
+        sendHouseEnd(i)
+      }
+    })
   }
 
   const promptAt = new Vector3()
@@ -552,7 +694,8 @@ export function buildNeighbours(scene, homes, { ui, carry, hud, doorWood }) {
     },
     update(dt, p) {
       elapsed += dt
-      for (const h of active) tick(h, dt, p)
+      for (const h of active) if (!h.remote) tick(h, dt, p)
+      syncNet(dt)
 
       current = player.stunned > 0 ? null : pick(p)
       ui.setScare(current?.kind === 'scare' ? () => act(current) : null)

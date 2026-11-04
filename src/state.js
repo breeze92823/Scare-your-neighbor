@@ -1,4 +1,5 @@
 import { PLAYER_START } from './config.js'
+import { stats } from './stats.js'
 
 // The player's counters shown on the HUD: speed (shoe), scare level (ghost) and
 // money. Plain values with change listeners; game code calls set() / add().
@@ -9,11 +10,21 @@ export const state = {
   get: (key) => values[key],
   set(key, value) {
     if (values[key] === value) return
+    if (key === 'money' && value > values.money) stats.earned += value - values.money // lifetime earnings (leaderboard)
     values[key] = value
     for (const fn of listeners) fn(key, value)
   },
   add(key, delta) {
     state.set(key, values[key] + delta)
+  },
+  // A loaded save: sets the values without counting them as earnings.
+  hydrate(doc) {
+    for (const key of Object.keys(PLAYER_START)) {
+      if (!Number.isFinite(doc[key]) || doc[key] < 0) continue
+      const earned = stats.earned
+      state.set(key, doc[key])
+      stats.earned = earned
+    }
   },
   // fn(key, value) on every change; called once per key right away.
   subscribe(fn) {
